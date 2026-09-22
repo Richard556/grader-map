@@ -270,18 +270,17 @@
       
       <label>Cycle Rule (Days until status changes)</label>
       <select id="cyclePreset" onchange="handlePresetChange(this.value)">
-        <option value="standard">Standard (7 days Green, 14 days Yellow)</option>
-        <option value="quick">Spring / Heavy Rain (3 days Green, 7 days Yellow)</option>
-        <option value="extended">Dry Summer (14 days Green, 28 days Yellow)</option>
+        <option value="monthly" selected>Monthly Cycle (21 days Green, 30 days Yellow)</option>
+        <option value="quick">Spring / Heavy Rain (7 days Green, 14 days Yellow)</option>
         <option value="custom">Custom Thresholds...</option>
       </select>
 
       <div id="customDaysGroup" style="display:none;">
         <label>Days Road Stays Green (&lt; span)</label>
-        <input type="number" id="inputGreenDays" value="7" min="1" max="90" />
+        <input type="number" id="inputGreenDays" value="21" min="1" max="90" />
 
         <label>Days Road Turns Yellow (Warning)</label>
-        <input type="number" id="inputYellowDays" value="14" min="2" max="180" />
+        <input type="number" id="inputYellowDays" value="30" min="2" max="180" />
       </div>
 
       <hr style="border:0; border-top:1px solid #334155; margin:18px 0 10px;" />
@@ -310,8 +309,8 @@
     const clientActive = !SUPABASE_URL.includes('YOUR_SUPABASE_URL');
     const dbClient = clientActive ? window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY) : null;
 
-    let greenThresholdDays = 7;
-    let yellowThresholdDays = 14;
+    let greenThresholdDays = 21;
+    let yellowThresholdDays = 30;
     let currentOperator = localStorage.getItem('sverdrup_operator') || '';
 
     // Initialize Map with 28px touch tolerance for easy line tapping
@@ -384,7 +383,6 @@
       document.getElementById('operatorModal').style.display = 'none';
     }
 
-    // Auto-prompt on first open if operator is empty
     if (!currentOperator) {
       openOperatorModal();
     } else {
@@ -405,12 +403,12 @@
 
       const daysOld = (new Date() - new Date(timestamp)) / (1000 * 60 * 60 * 24);
       if (daysOld <= greenThresholdDays) {
-        return { color: '#16a34a', dashArray: null, weight: 7 };  // Solid Green
+        return { color: '#16a34a', dashArray: null, weight: 7 };  // Solid Green (< 21 days)
       }
       if (daysOld <= yellowThresholdDays) {
-        return { color: '#eab308', dashArray: null, weight: 7 }; // Solid Yellow
+        return { color: '#eab308', dashArray: null, weight: 7 }; // Solid Yellow (21-30 days)
       }
-      return { color: '#b91c1c', dashArray: null, weight: 7 };     // Overdue Wine Red
+      return { color: '#b91c1c', dashArray: null, weight: 7 };     // Overdue Wine Red (> 30 days)
     }
 
     function getRoadId(props) {
@@ -495,7 +493,7 @@
         await loadSettings();
         await fetchStatuses();
 
-        // 1. INVISIBLE WIDE HITBOX LAYER (34px wide for foolproof cab tapping)
+        // 1. INVISIBLE WIDE HITBOX LAYER (34px wide for easy cab tapping)
         L.geoJSON(geojson, {
           style: () => ({
             color: '#000',
@@ -650,15 +648,12 @@
         customGroup.style.display = 'block';
       } else {
         customGroup.style.display = 'none';
-        if (val === 'standard') {
+        if (val === 'monthly') {
+          document.getElementById('inputGreenDays').value = 21;
+          document.getElementById('inputYellowDays').value = 30;
+        } else if (val === 'quick') {
           document.getElementById('inputGreenDays').value = 7;
           document.getElementById('inputYellowDays').value = 14;
-        } else if (val === 'quick') {
-          document.getElementById('inputGreenDays').value = 3;
-          document.getElementById('inputYellowDays').value = 7;
-        } else if (val === 'extended') {
-          document.getElementById('inputGreenDays').value = 14;
-          document.getElementById('inputYellowDays').value = 28;
         }
       }
     };
@@ -670,8 +665,8 @@
         return;
       }
 
-      greenThresholdDays = parseInt(document.getElementById('inputGreenDays').value, 10) || 7;
-      yellowThresholdDays = parseInt(document.getElementById('inputYellowDays').value, 10) || 14;
+      greenThresholdDays = parseInt(document.getElementById('inputGreenDays').value, 10) || 21;
+      yellowThresholdDays = parseInt(document.getElementById('inputYellowDays').value, 10) || 30;
 
       const resetType = document.getElementById('resetTypeSelect').value;
       const now = new Date();
@@ -709,7 +704,7 @@
         }
       }
 
-      alert(`Updated: Green < ${greenThresholdDays}d, Yellow < ${yellowThresholdDays}d. Reset applied.`);
+      alert(`Updated: Green < ${greenThresholdDays}d, Yellow < ${yellowThresholdDays}d. Settings applied.`);
       closeSettingsModal();
     };
   </script>
