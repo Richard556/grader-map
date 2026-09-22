@@ -80,7 +80,7 @@
       box-sizing: border-box;
     }
 
-    /* Top Left Control Dock (Filter & Labels) */
+    /* Top Left Control Dock */
     .controls-dock {
       position: absolute;
       top: 14px;
@@ -138,12 +138,17 @@
       text-decoration: underline;
     }
 
-    /* GPS Control Button */
-    .gps-btn {
+    /* Floating Action Buttons (Right Side) */
+    .fab-dock {
       position: absolute;
       top: 14px;
       right: 14px;
       z-index: 1000;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+    .fab-btn {
       background: #1e293b;
       color: #38bdf8;
       border: 2px solid #38bdf8;
@@ -157,9 +162,13 @@
       cursor: pointer;
       box-shadow: 0 4px 12px rgba(0,0,0,0.4);
     }
-    .gps-btn.tracking {
+    .fab-btn.tracking {
       background: #38bdf8;
       color: #0f172a;
+    }
+    .fab-hazard {
+      border-color: #f59e0b;
+      color: #f59e0b;
     }
 
     /* Road Name Labels */
@@ -179,6 +188,22 @@
     .leaflet-tooltip-left:before,
     .leaflet-tooltip-right:before {
       display: none;
+    }
+
+    /* Hazard Marker Icon */
+    .hazard-pin-icon {
+      background: #f59e0b;
+      color: #000;
+      font-weight: 900;
+      font-size: 15px;
+      border: 2px solid #fff;
+      border-radius: 50%;
+      width: 28px;
+      height: 28px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 0 10px rgba(245, 158, 11, 0.8);
     }
 
     /* Admin Settings Trigger */
@@ -296,7 +321,12 @@
     🚜 <span id="currentOperatorName">Select Driver</span>
   </div>
 
-  <button id="gpsToggle" class="gps-btn" onclick="toggleGPS()" title="Find My Location">📍</button>
+  <!-- Right Side Floating Controls -->
+  <div class="fab-dock">
+    <button id="gpsToggle" class="fab-btn" onclick="toggleGPS()" title="Find My Location">📍</button>
+    <button id="hazardReportBtn" class="fab-btn fab-hazard" onclick="startHazardReport()" title="Report Culvert/Washout Hazard">⚠️</button>
+  </div>
+
   <button class="admin-menu-btn" onclick="openSettingsModal()">⚙️ Cycle & Reset Settings</button>
 
   <!-- Operator Sign-In Modal -->
@@ -315,6 +345,35 @@
 
       <div class="modal-actions">
         <button class="btn-save" onclick="saveOperatorChoice()">Confirm & Start</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Hazard Drop & Photo Modal -->
+  <div id="hazardModal" class="modal-overlay">
+    <div class="modal-card">
+      <h2>⚠️ Log Road Hazard</h2>
+      <p>Attach a photo and note for the township crew.</p>
+
+      <label>Hazard Category</label>
+      <select id="hazardCategory">
+        <option value="Culvert Issue">Culvert Issue / Damaged</option>
+        <option value="Washout / Boil">Washout / Soft Boil</option>
+        <option value="Gravel Needed">Gravel Needed</option>
+        <option value="Tree / Debris">Tree / Road Debris</option>
+        <option value="Sign Down">Sign Damaged / Down</option>
+      </select>
+
+      <label>Notes / Description</label>
+      <input type="text" id="hazardNotes" placeholder="e.g. 18in culvert crushed on east side" />
+
+      <label>Attach Photo (Launches Camera)</label>
+      <!-- capture="environment" launches rear camera directly on phones -->
+      <input type="file" id="hazardCameraInput" accept="image/*" capture="environment" style="background:#0f172a; color:#cbd5e1; padding:8px;" />
+
+      <div class="modal-actions">
+        <button class="btn-secondary" onclick="closeHazardModal()">Cancel</button>
+        <button class="btn-save" id="saveHazardBtn" onclick="submitHazardPin()">Save Hazard</button>
       </div>
     </div>
   </div>
@@ -369,11 +428,11 @@
     let yellowThresholdDays = 30;
     let currentOperator = localStorage.getItem('sverdrup_operator') || '';
     
-    // Filter modes: 'all', 'needs_work', 'not_graded', 'graded'
     let currentFilter = 'all';
     let showLabels = false;
+    let activeGpsCoords = null;
+    let pendingHazardCoords = null;
 
-    // Initialize Map with 28px touch tolerance
     const map = L.map('map', {
       center: [43.7138, -96.7222],
       zoom: 12,
@@ -388,6 +447,7 @@
 
     let roadStatuses = {};
     let roadLayers = {};
+    let hazardMarkers = {};
 
     // --- OPERATOR MANAGEMENT ---
     function updateOperatorUI() {
@@ -449,10 +509,10 @@
       updateOperatorUI();
     }
 
-    // --- VISUAL & ROAD STYLING ---
+    // --- ROAD STYLING (TERMINOLOGY: GRAVEL) ---
     function calculateRoadVisual(status, timestamp) {
-      if (status === 'needs_work') {
-        return { color: '#ea580c', dashArray: null, weight: 7, category: 'needs_work' }; // Solid Orange
+      if (status === 'gravel') {
+        return { color: '#ea580c', dashArray: null, weight: 7, category: 'gravel' }; // Solid Orange
       }
       if (status === 'not_graded') {
         return { color: '#f43f5e', dashArray: null, weight: 8, category: 'not_graded' }; // Crimson
@@ -492,10 +552,9 @@
           ? calculateRoadVisual(current.status, current.updated_at) 
           : calculateRoadVisual(null, null);
 
-        // Filter Check
         let opacity = 0.95;
         if (currentFilter !== 'all') {
-          if (currentFilter === 'needs_work' && visual.category !== 'needs_work') opacity = 0.08;
+          if (currentFilter === 'gravel' && visual.category !== 'gravel') opacity = 0.08;
           if (currentFilter === 'not_graded' && visual.category !== 'not_graded') opacity = 0.08;
           if (currentFilter === 'graded' && visual.category !== 'graded') opacity = 0.08;
         }
@@ -513,10 +572,10 @@
     window.cycleFilter = function() {
       const btn = document.getElementById('filterBtn');
       if (currentFilter === 'all') {
-        currentFilter = 'needs_work';
-        btn.innerHTML = '🔍 Only: Rock / Work';
+        currentFilter = 'gravel';
+        btn.innerHTML = '🔍 Only: Gravel';
         btn.classList.add('active-filter');
-      } else if (currentFilter === 'needs_work') {
+      } else if (currentFilter === 'gravel') {
         currentFilter = 'not_graded';
         btn.innerHTML = '🔍 Only: Needs Graded';
         btn.classList.add('active-filter');
@@ -568,11 +627,201 @@
       const { data, error } = await dbClient.from('road_status').select('*');
       if (data && !error) {
         data.forEach(row => {
+          // Normalize legacy 'needs_work' to 'gravel'
+          if (row.status === 'needs_work') row.status = 'gravel';
           roadStatuses[row.segment_id] = row;
           applyStyle(row.segment_id);
         });
       }
     }
+
+    // --- HAZARD PINS SYSTEM WITH PHOTOS ---
+    function renderHazardMarker(pin) {
+      if (hazardMarkers[pin.id]) {
+        map.removeLayer(hazardMarkers[pin.id]);
+      }
+
+      const icon = L.divIcon({
+        className: 'hazard-pin-icon',
+        html: '⚠️',
+        iconSize: [28, 28]
+      });
+
+      const marker = L.marker([pin.lat, pin.lng], { icon: icon }).addTo(map);
+      hazardMarkers[pin.id] = marker;
+
+      const dateStr = pin.created_at ? new Date(pin.created_at).toLocaleDateString() : '';
+      const photoHtml = pin.photo_url 
+        ? `<div style="margin-top:8px;"><img src="${pin.photo_url}" style="width:100%; border-radius:6px; max-height:180px; object-fit:cover;" /></div>` 
+        : '';
+
+      const popupHtml = `
+        <div class="popup-container">
+          <div class="popup-title" style="color:#f59e0b;">⚠️ ${pin.hazard_type}</div>
+          <div class="popup-meta">Reported: <strong>${dateStr}</strong> by <strong>${pin.created_by || 'Unknown'}</strong></div>
+          <div style="font-size:14px; margin-bottom:8px; color:#f1f5f9;">${pin.notes || 'No description provided.'}</div>
+          ${photoHtml}
+          <button class="cab-btn btn-green" style="margin-top:10px;" onclick="resolveHazard('${pin.id}', '${pin.photo_url || ''}')">Mark Resolved (Delete)</button>
+        </div>
+      `;
+      marker.bindPopup(popupHtml);
+    }
+
+    async function fetchHazards() {
+      if (!dbClient) return;
+      const { data, error } = await dbClient.from('hazard_pins').select('*');
+      if (data && !error) {
+        data.forEach(pin => renderHazardMarker(pin));
+      }
+    }
+
+    window.startHazardReport = function() {
+      if (activeGpsCoords) {
+        pendingHazardCoords = activeGpsCoords;
+        openHazardModal();
+      } else {
+        alert('Tap on the map where the hazard is located.');
+        map.once('click', e => {
+          pendingHazardCoords = [e.latlng.lat, e.latlng.lng];
+          openHazardModal();
+        });
+      }
+    };
+
+    function openHazardModal() {
+      document.getElementById('hazardNotes').value = '';
+      document.getElementById('hazardCameraInput').value = '';
+      document.getElementById('hazardModal').style.display = 'flex';
+    }
+
+    window.closeHazardModal = function() {
+      document.getElementById('hazardModal').style.display = 'none';
+      pendingHazardCoords = null;
+    };
+
+    // Client-side image downscaling to prevent storage bloat (~150 KB JPEG)
+    function compressImage(file) {
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.readAsDataURL(file);
+        reader.onload = event => {
+          const img = new Image();
+          img.src = event.target.result;
+          img.onload = () => {
+            const canvas = document.createElement('canvas');
+            const MAX_WIDTH = 1280;
+            const MAX_HEIGHT = 1280;
+            let width = img.width;
+            let height = img.height;
+
+            if (width > height) {
+              if (width > MAX_WIDTH) {
+                height *= MAX_WIDTH / width;
+                width = MAX_WIDTH;
+              }
+            } else {
+              if (height > MAX_HEIGHT) {
+                width *= MAX_HEIGHT / height;
+                height = MAX_HEIGHT;
+              }
+            }
+
+            canvas.width = width;
+            canvas.height = height;
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(img, 0, 0, width, height);
+
+            canvas.toBlob(blob => {
+              resolve(blob);
+            }, 'image/jpeg', 0.75);
+          };
+          img.onerror = err => reject(err);
+        };
+        reader.onerror = err => reject(err);
+      });
+    }
+
+    window.submitHazardPin = async function() {
+      if (!currentOperator) {
+        openOperatorModal();
+        return;
+      }
+      if (!pendingHazardCoords) {
+        alert('No coordinates selected.');
+        return;
+      }
+
+      const saveBtn = document.getElementById('saveHazardBtn');
+      saveBtn.innerText = 'Saving...';
+      saveBtn.disabled = true;
+
+      try {
+        const hazardType = document.getElementById('hazardCategory').value;
+        const notes = document.getElementById('hazardNotes').value.trim();
+        const fileInput = document.getElementById('hazardCameraInput');
+        const pinId = 'pin_' + Date.now();
+        let photoUrl = null;
+
+        // Compress and upload photo to Supabase storage if taken
+        if (fileInput.files && fileInput.files[0]) {
+          const compressedBlob = await compressImage(fileInput.files[0]);
+          const filePath = `${pinId}.jpg`;
+
+          const { data: uploadData, error: uploadError } = await dbClient.storage
+            .from('hazard_photos')
+            .upload(filePath, compressedBlob, { contentType: 'image/jpeg' });
+
+          if (!uploadError) {
+            const { data: publicUrlData } = dbClient.storage
+              .from('hazard_photos')
+              .getPublicUrl(filePath);
+            photoUrl = publicUrlData.publicUrl;
+          }
+        }
+
+        const newPin = {
+          id: pinId,
+          lat: pendingHazardCoords[0],
+          lng: pendingHazardCoords[1],
+          hazard_type: hazardType,
+          notes: notes,
+          photo_url: photoUrl,
+          created_by: currentOperator,
+          created_at: new Date().toISOString()
+        };
+
+        renderHazardMarker(newPin);
+        closeHazardModal();
+
+        if (dbClient) {
+          await dbClient.from('hazard_pins').insert(newPin);
+        }
+      } catch (err) {
+        console.error('Error saving hazard:', err);
+        alert('Error uploading hazard.');
+      } finally {
+        saveBtn.innerText = 'Save Hazard';
+        saveBtn.disabled = false;
+      }
+    };
+
+    window.resolveHazard = async function(pinId, photoUrl) {
+      if (confirm('Mark this hazard resolved and remove it from the map?')) {
+        if (hazardMarkers[pinId]) {
+          map.removeLayer(hazardMarkers[pinId]);
+          delete hazardMarkers[pinId];
+        }
+
+        if (dbClient) {
+          await dbClient.from('hazard_pins').delete().eq('id', pinId);
+          // Delete photo from bucket to keep free storage clean
+          if (photoUrl) {
+            const fileName = `${pinId}.jpg`;
+            await dbClient.storage.from('hazard_photos').remove([fileName]);
+          }
+        }
+      }
+    };
 
     // --- INSTANT REALTIME WEBSOCKET SYNC ---
     if (dbClient) {
@@ -584,8 +833,24 @@
           payload => {
             const row = payload.new;
             if (row && row.segment_id) {
+              if (row.status === 'needs_work') row.status = 'gravel';
               roadStatuses[row.segment_id] = row;
               applyStyle(row.segment_id);
+            }
+          }
+        )
+        .on(
+          'postgres_changes',
+          { event: '*', schema: 'public', table: 'hazard_pins' },
+          payload => {
+            if (payload.eventType === 'INSERT') {
+              renderHazardMarker(payload.new);
+            } else if (payload.eventType === 'DELETE') {
+              const oldId = payload.old.id;
+              if (hazardMarkers[oldId]) {
+                map.removeLayer(hazardMarkers[oldId]);
+                delete hazardMarkers[oldId];
+              }
             }
           }
         )
@@ -600,6 +865,7 @@
       .then(async geojson => {
         await loadSettings();
         await fetchStatuses();
+        await fetchHazards();
 
         // 1. INVISIBLE WIDE HITBOX LAYER (34px wide)
         L.geoJSON(geojson, {
@@ -618,7 +884,7 @@
           }
         }).addTo(map);
 
-        // 2. VISIBLE ROAD LINES LAYER WITH PERMANENT LABELS
+        // 2. VISIBLE ROAD LINES LAYER WITH LABELS
         L.geoJSON(geojson, {
           style: feature => {
             const id = getRoadId(feature.properties);
@@ -638,14 +904,11 @@
             const name = getRoadName(feature.properties);
             roadLayers[id] = layer;
 
-            // Bind tooltip label to center of road
             layer.bindTooltip(name, {
               permanent: true,
               direction: 'center',
               className: 'road-label'
             });
-
-            // Keep tooltips closed initially until toggled
             layer.closeTooltip();
 
             layer.on('click', () => {
@@ -659,9 +922,9 @@
                   <div class="popup-title">${name}</div>
                   <div class="popup-meta">Last Done: <strong>${lastDate}</strong>${operatorInfo}</div>
                   ${lastNote}
-                  <input type="text" id="note_${id}" class="note-input" placeholder="Notes (rock count, washouts, etc.)" />
+                  <input type="text" id="note_${id}" class="note-input" placeholder="Notes (tons, washouts, etc.)" />
                   <button class="cab-btn btn-green" onclick="saveStatus('${id}', 'graded')">Done (Graded)</button>
-                  <button class="cab-btn btn-orange" onclick="saveStatus('${id}', 'needs_work')">Needs Work / Rock</button>
+                  <button class="cab-btn btn-orange" onclick="saveStatus('${id}', 'gravel')">Gravel</button>
                   <button class="cab-btn btn-red" onclick="saveStatus('${id}', 'not_graded')">Needs Graded</button>
                   <button class="cab-btn btn-gray" onclick="saveStatus('${id}', 'untouched')">Reset to Untouched (Gray)</button>
                 </div>
@@ -715,6 +978,7 @@
       if (watchId !== null) {
         navigator.geolocation.clearWatch(watchId);
         watchId = null;
+        activeGpsCoords = null;
         if (userMarker) {
           map.removeLayer(userMarker);
           userMarker = null;
@@ -730,14 +994,14 @@
           pos => {
             const lat = pos.coords.latitude;
             const lng = pos.coords.longitude;
-            const latlng = [lat, lng];
+            activeGpsCoords = [lat, lng];
 
             if (!userMarker) {
               const icon = L.divIcon({ className: 'gps-marker-pulse', iconSize: [16, 16] });
-              userMarker = L.marker(latlng, { icon: icon }).addTo(map);
-              map.setView(latlng, 14);
+              userMarker = L.marker(activeGpsCoords, { icon: icon }).addTo(map);
+              map.setView(activeGpsCoords, 14);
             } else {
-              userMarker.setLatLng(latlng);
+              userMarker.setLatLng(activeGpsCoords);
             }
           },
           err => {
