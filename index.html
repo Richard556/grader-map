@@ -223,7 +223,7 @@
 
       <label>Township Cycle Reset</label>
       <select id="resetTypeSelect">
-        <option value="all">Reset ALL Roads to "Needs Graded"</option>
+        <option value="all">Reset ALL Roads to Untouched (Dashed Gray)</option>
         <option value="older_than_green">Reset only roads older than Green cycle</option>
         <option value="older_than_yellow">Reset only roads older than Yellow cycle</option>
       </select>
@@ -263,30 +263,30 @@
     let roadLayers = {};
 
     function calculateRoadVisual(status, timestamp) {
-      // 1. Explicitly flagged needs rock / culvert / work
+      // 1. Explicitly flagged needs rock / work
       if (status === 'needs_work') {
-        return { color: '#ea580c', dashArray: null, weight: 7 }; // Solid Orange
+        return { color: '#ea580c', dashArray: null, weight: 7 }; // Solid Orange[cite: 16]
       }
       
       // 2. Explicitly flagged "Needs Graded" by an operator
       if (status === 'not_graded') {
-        return { color: '#dc2626', dashArray: null, weight: 7 }; // Solid Bright Red
+        return { color: '#f43f5e', dashArray: null, weight: 8 }; // High-Visibility Crimson
       }
 
-      // 3. Never logged / untouched default
-      if (!timestamp || !status) {
-        return { color: '#94a3b8', dashArray: '6, 8', weight: 4.5 }; // Dashed Muted Slate Gray
+      // 3. Default / untouched road (no record or empty status)
+      if (!timestamp || !status || status === 'untouched') {
+        return { color: '#94a3b8', dashArray: '8, 8', weight: 4.5 }; // Dashed Muted Slate
       }
 
       // 4. Completed cycle aging
       const daysOld = (new Date() - new Date(timestamp)) / (1000 * 60 * 60 * 24);
       if (daysOld <= greenThresholdDays) {
-        return { color: '#16a34a', dashArray: null, weight: 7 };  // Solid Green
+        return { color: '#16a34a', dashArray: null, weight: 7 };  // Solid Green[cite: 16]
       }
       if (daysOld <= yellowThresholdDays) {
-        return { color: '#eab308', dashArray: null, weight: 7 }; // Solid Yellow
+        return { color: '#eab308', dashArray: null, weight: 7 }; // Solid Yellow[cite: 16]
       }
-      return { color: '#dc2626', dashArray: null, weight: 7 };     // Solid Red (Overdue)
+      return { color: '#b91c1c', dashArray: null, weight: 7 };     // Overdue Wine Red
     }
 
     function getRoadId(props) {
@@ -541,7 +541,7 @@
         }
 
         if (shouldReset) {
-          roadStatuses[id] = { segment_id: id, status: 'not_graded', updated_at: now.toISOString(), notes: '' };
+          roadStatuses[id] = { segment_id: id, status: 'untouched', updated_at: null, notes: '' };
           rowsToUpdate.push(roadStatuses[id]);
         }
       });
