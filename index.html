@@ -72,27 +72,81 @@
       font-size: 14px;
       box-sizing: border-box;
     }
+
+    /* GPS Control Button */
+    .gps-btn {
+      position: absolute;
+      top: 14px;
+      right: 14px;
+      z-index: 1000;
+      background: #1e293b;
+      color: #38bdf8;
+      border: 2px solid #38bdf8;
+      border-radius: 50%;
+      width: 48px;
+      height: 48px;
+      font-size: 22px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+    }
+    .gps-btn.tracking {
+      background: #38bdf8;
+      color: #0f172a;
+    }
+
+    /* Master Reset Button */
+    .admin-reset-btn {
+      position: absolute;
+      bottom: 20px;
+      left: 14px;
+      z-index: 1000;
+      background: rgba(15, 23, 42, 0.85);
+      color: #94a3b8;
+      border: 1px solid #475569;
+      border-radius: 6px;
+      padding: 8px 12px;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      backdrop-filter: blur(4px);
+    }
+    .admin-reset-btn:hover {
+      color: #f87171;
+      border-color: #f87171;
+    }
+
+    /* GPS Marker Pulse */
+    .gps-marker-pulse {
+      background: #0284c7;
+      border: 3px solid #ffffff;
+      border-radius: 50%;
+      width: 16px;
+      height: 16px;
+      box-shadow: 0 0 12px 6px rgba(2, 132, 199, 0.6);
+    }
   </style>
 </head>
 <body>
   <div id="map"></div>
+  <button id="gpsToggle" class="gps-btn" onclick="toggleGPS()" title="Find My Location">📍</button>
+  <button class="admin-reset-btn" onclick="triggerMasterReset()">⚙️ Reset Township Cycle</button>
 
   <script>
-    // --- SUPABASE KEYS ---
-   const SUPABASE_URL = 'https://wzhqsionreajfgihmdco.supabase.co';
-   const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Ind6aHFzaW9ucmVhamZnaWhtZGNvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTAwMzEyMDcsImV4cCI6MjEwNTYwNzIwN30.Qoimk3itzpMrDEIBvSlxg9_mJKlEroYqNQgygcS4rII';
+    const SUPABASE_URL = 'https://wzhqsionreajfgihmdco.supabase.co';
+    const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Ind6aHFzaW9ucmVhamZnaWhtZGNvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTAwMzEyMDcsImV4cCI6MjEwNTYwNzIwN30.Qoimk3itzpMrDEIBvSlxg9_mJKlEroYqNQgygcS4rII';
 
     const clientActive = !SUPABASE_URL.includes('YOUR_SUPABASE_URL');
     const dbClient = clientActive ? window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY) : null;
 
-    // Center over Sverdrup Township
     const map = L.map('map', {
       center: [43.7138, -96.7222],
       zoom: 12,
       zoomControl: true
     });
 
-    // Satellite Imagery
     L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
       attribution: 'Esri World Imagery',
       maxZoom: 18
@@ -106,9 +160,9 @@
       if (!timestamp || status === 'not_graded') return '#dc2626'; // Red
 
       const daysOld = (new Date() - new Date(timestamp)) / (1000 * 60 * 60 * 24);
-      if (daysOld <= 7) return '#16a34a';  // Green (< 7 days)
+      if (daysOld <= 7) return '#16a34a';  // Green (<7 days)
       if (daysOld <= 14) return '#eab308'; // Yellow (7-14 days)
-      return '#dc2626';                   // Red (> 14 days)
+      return '#dc2626';                   // Red (>14 days)
     }
 
     function getRoadId(props) {
@@ -119,22 +173,40 @@
       return props.STNM1 || props.STREETNAME || props.Name || 'Township Road';
     }
 
+    function applyStyle(segmentId) {
+      const current = roadStatuses[segmentId];
+      if (roadLayers[segmentId]) {
+        roadLayers[segmentId].setStyle({
+          color: current ? calculateColor(current.status, current.updated_at) : '#dc2626'
+        });
+      }
+    }
+
     async function fetchStatuses() {
       if (!dbClient) return;
       const { data, error } = await dbClient.from('road_status').select('*');
       if (data && !error) {
         data.forEach(row => {
           roadStatuses[row.segment_id] = row;
-          if (roadLayers[row.segment_id]) {
-            roadLayers[row.segment_id].setStyle({
-              color: calculateColor(row.status, row.updated_at)
-            });
-          }
+          applyStyle(row.segment_id);
         });
       }
     }
 
-    // Load GeoJSON road grid
+    // --- INSTANT REALTIME WEBSOCKET SYNC ---
+    if (dbClient) {
+      dbClient
+        .channel('realtime_roads')
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'road_status' }, payload => {
+          if (payload.new && payload.new.segment_id) {
+            roadStatuses[payload.new.segment_id] = payload.new;
+            applyStyle(payload.new.segment_id);
+          }
+        })
+        .subscribe();
+    }
+
+    // Load GeoJSON road network
     fetch('sverdrup_roads.geojson')
       .then(res => {
         if (!res.ok) throw new Error('File not found');
@@ -179,7 +251,7 @@
           }
         }).addTo(map);
       })
-      .catch(err => console.error('Error loading sverdrup_roads.geojson:', err));
+      .catch(err => console.error('Error loading geojson:', err));
 
     window.saveStatus = async function(segmentId, newStatus) {
       const noteInput = document.getElementById(`note_${segmentId}`);
@@ -193,12 +265,7 @@
         notes: notes
       };
 
-      if (roadLayers[segmentId]) {
-        roadLayers[segmentId].setStyle({
-          color: calculateColor(newStatus, now)
-        });
-      }
-
+      applyStyle(segmentId);
       map.closePopup();
 
       if (dbClient) {
@@ -208,6 +275,80 @@
           updated_at: now,
           notes: notes
         });
+      }
+    };
+
+    // --- LIVE GPS TRACKING ---
+    let watchId = null;
+    let userMarker = null;
+
+    window.toggleGPS = function() {
+      const btn = document.getElementById('gpsToggle');
+      if (watchId !== null) {
+        navigator.geolocation.clearWatch(watchId);
+        watchId = null;
+        if (userMarker) {
+          map.removeLayer(userMarker);
+          userMarker = null;
+        }
+        btn.classList.remove('tracking');
+      } else {
+        if (!navigator.geolocation) {
+          alert('GPS is not supported on this browser.');
+          return;
+        }
+        btn.classList.add('tracking');
+        watchId = navigator.geolocation.watchPosition(
+          pos => {
+            const lat = pos.coords.latitude;
+            const lng = pos.coords.longitude;
+            const latlng = [lat, lng];
+
+            if (!userMarker) {
+              const icon = L.divIcon({ className: 'gps-marker-pulse', iconSize: [16, 16] });
+              userMarker = L.marker(latlng, { icon: icon }).addTo(map);
+              map.setView(latlng, 14);
+            } else {
+              userMarker.setLatLng(latlng);
+            }
+          },
+          err => {
+            console.warn('GPS location error:', err);
+            alert('Enable location access in your browser to view current cab position.');
+            btn.classList.remove('tracking');
+            watchId = null;
+          },
+          { enableHighAccuracy: true }
+        );
+      }
+    };
+
+    // --- ADMIN MASTER RESET (PIN: 1234) ---
+    window.triggerMasterReset = async function() {
+      const pin = prompt('Enter Admin PIN to reset all township roads back to RED:');
+      if (pin !== '1234') {
+        if (pin !== null) alert('Incorrect PIN');
+        return;
+      }
+
+      if (!confirm('Are you sure you want to reset every road in the township to "Needs Graded"?')) return;
+
+      const now = new Date().toISOString();
+
+      // Reset client layers locally
+      Object.keys(roadLayers).forEach(id => {
+        roadStatuses[id] = { segment_id: id, status: 'not_graded', updated_at: now, notes: '' };
+        applyStyle(id);
+      });
+
+      if (dbClient) {
+        const rows = Object.keys(roadLayers).map(id => ({
+          segment_id: id,
+          status: 'not_graded',
+          updated_at: now,
+          notes: ''
+        }));
+        await dbClient.from('road_status').upsert(rows);
       }
     };
   </script>
