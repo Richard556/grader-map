@@ -97,28 +97,92 @@
       color: #0f172a;
     }
 
-    /* Master Reset Button */
-    .admin-reset-btn {
+    /* Admin Settings Trigger */
+    .admin-menu-btn {
       position: absolute;
       bottom: 20px;
       left: 14px;
       z-index: 1000;
-      background: rgba(15, 23, 42, 0.85);
-      color: #94a3b8;
+      background: rgba(15, 23, 42, 0.9);
+      color: #f8fafc;
       border: 1px solid #475569;
-      border-radius: 6px;
-      padding: 8px 12px;
-      font-size: 12px;
-      font-weight: 600;
+      border-radius: 8px;
+      padding: 10px 14px;
+      font-size: 13px;
+      font-weight: 700;
       cursor: pointer;
       backdrop-filter: blur(4px);
-    }
-    .admin-reset-btn:hover {
-      color: #f87171;
-      border-color: #f87171;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.4);
     }
 
-    /* GPS Marker Pulse */
+    /* Settings Modal Overlay */
+    .modal-overlay {
+      display: none;
+      position: fixed;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background: rgba(0,0,0,0.7);
+      z-index: 2000;
+      align-items: center;
+      justify-content: center;
+      padding: 16px;
+    }
+    .modal-card {
+      background: #1e293b;
+      color: #fff;
+      width: 100%;
+      max-width: 360px;
+      border-radius: 12px;
+      padding: 20px;
+      box-shadow: 0 8px 30px rgba(0,0,0,0.6);
+      border: 1px solid #334155;
+    }
+    .modal-card h2 {
+      margin: 0 0 12px;
+      font-size: 18px;
+    }
+    .modal-card label {
+      display: block;
+      font-size: 13px;
+      color: #94a3b8;
+      margin-top: 10px;
+      margin-bottom: 4px;
+    }
+    .modal-card select, .modal-card input[type="number"], .modal-card input[type="password"] {
+      width: 100%;
+      padding: 10px;
+      border-radius: 6px;
+      border: 1px solid #475569;
+      background: #0f172a;
+      color: #fff;
+      box-sizing: border-box;
+      font-size: 14px;
+    }
+    .modal-actions {
+      display: flex;
+      gap: 10px;
+      margin-top: 16px;
+    }
+    .btn-secondary {
+      background: #475569;
+      color: #fff;
+      flex: 1;
+      padding: 10px;
+      border-radius: 6px;
+      border: none;
+      font-weight: bold;
+      cursor: pointer;
+    }
+    .btn-save {
+      background: #2563eb;
+      color: #fff;
+      flex: 1;
+      padding: 10px;
+      border-radius: 6px;
+      border: none;
+      font-weight: bold;
+      cursor: pointer;
+    }
+
     .gps-marker-pulse {
       background: #0284c7;
       border: 3px solid #ffffff;
@@ -132,7 +196,47 @@
 <body>
   <div id="map"></div>
   <button id="gpsToggle" class="gps-btn" onclick="toggleGPS()" title="Find My Location">📍</button>
-  <button class="admin-reset-btn" onclick="triggerMasterReset()">⚙️ Reset Township Cycle</button>
+  <button class="admin-menu-btn" onclick="openSettingsModal()">⚙️ Cycle & Reset Settings</button>
+
+  <!-- Cycle & Admin Settings Modal -->
+  <div id="settingsModal" class="modal-overlay">
+    <div class="modal-card">
+      <h2>Cycle Aging & Reset Menu</h2>
+      
+      <label>Cycle Rule (Days until status changes)</label>
+      <select id="cyclePreset" onchange="handlePresetChange(this.value)">
+        <option value="standard">Standard (7 days Green, 14 days Yellow)</option>
+        <option value="quick">Spring / Heavy Rain (3 days Green, 7 days Yellow)</option>
+        <option value="extended">Dry Summer (14 days Green, 28 days Yellow)</option>
+        <option value="custom">Custom Thresholds...</option>
+      </select>
+
+      <div id="customDaysGroup" style="display:none;">
+        <label>Days Road Stays Green (< span)</label>
+        <input type="number" id="inputGreenDays" value="7" min="1" max="90" />
+
+        <label>Days Road Turns Yellow (Warning)</label>
+        <input type="number" id="inputYellowDays" value="14" min="2" max="180" />
+      </div>
+
+      <hr style="border:0; border-top:1px solid #334155; margin:18px 0 10px;" />
+
+      <label>Township Cycle Reset</label>
+      <select id="resetTypeSelect">
+        <option value="all">Reset ALL Roads to "Needs Graded"</option>
+        <option value="older_than_green">Reset only roads older than Green cycle</option>
+        <option value="older_than_yellow">Reset only roads older than Yellow cycle</option>
+      </select>
+
+      <label>Admin PIN (Required to Reset or Save)</label>
+      <input type="password" id="adminPin" placeholder="Enter PIN (Default: 1234)" />
+
+      <div class="modal-actions">
+        <button class="btn-secondary" onclick="closeSettingsModal()">Close</button>
+        <button class="btn-save" onclick="applySettingsAndReset()">Apply / Save</button>
+      </div>
+    </div>
+  </div>
 
   <script>
     const SUPABASE_URL = 'https://wzhqsionreajfgihmdco.supabase.co';
@@ -140,6 +244,9 @@
 
     const clientActive = !SUPABASE_URL.includes('YOUR_SUPABASE_URL');
     const dbClient = clientActive ? window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY) : null;
+
+    let greenThresholdDays = 7;
+    let yellowThresholdDays = 14;
 
     const map = L.map('map', {
       center: [43.7138, -96.7222],
@@ -160,9 +267,9 @@
       if (!timestamp || status === 'not_graded') return '#dc2626'; // Red
 
       const daysOld = (new Date() - new Date(timestamp)) / (1000 * 60 * 60 * 24);
-      if (daysOld <= 7) return '#16a34a';  // Green (<7 days)
-      if (daysOld <= 14) return '#eab308'; // Yellow (7-14 days)
-      return '#dc2626';                   // Red (>14 days)
+      if (daysOld <= greenThresholdDays) return '#16a34a';  // Green
+      if (daysOld <= yellowThresholdDays) return '#eab308'; // Yellow
+      return '#dc2626';                                    // Red (Overdue)
     }
 
     function getRoadId(props) {
@@ -173,12 +280,36 @@
       return props.STNM1 || props.STREETNAME || props.Name || 'Township Road';
     }
 
+    function redrawAllRoads() {
+      Object.keys(roadLayers).forEach(id => {
+        const cur = roadStatuses[id];
+        roadLayers[id].setStyle({
+          color: cur ? calculateColor(cur.status, cur.updated_at) : '#dc2626'
+        });
+      });
+    }
+
     function applyStyle(segmentId) {
       const current = roadStatuses[segmentId];
       if (roadLayers[segmentId]) {
         roadLayers[segmentId].setStyle({
           color: current ? calculateColor(current.status, current.updated_at) : '#dc2626'
         });
+      }
+    }
+
+    async function loadSettings() {
+      if (!dbClient) return;
+      try {
+        const { data } = await dbClient.from('township_settings').select('*').eq('id', 'cycle_config').single();
+        if (data) {
+          greenThresholdDays = data.green_days;
+          yellowThresholdDays = data.yellow_days;
+          document.getElementById('inputGreenDays').value = data.green_days;
+          document.getElementById('inputYellowDays').value = data.yellow_days;
+        }
+      } catch (err) {
+        console.log('No settings table found, using defaults.');
       }
     }
 
@@ -193,7 +324,6 @@
       }
     }
 
-    // --- INSTANT REALTIME WEBSOCKET SYNC ---
     if (dbClient) {
       dbClient
         .channel('realtime_roads')
@@ -206,13 +336,13 @@
         .subscribe();
     }
 
-    // Load GeoJSON road network
     fetch('sverdrup_roads.geojson')
       .then(res => {
         if (!res.ok) throw new Error('File not found');
         return res.json();
       })
       .then(async geojson => {
+        await loadSettings();
         await fetchStatuses();
 
         L.geoJSON(geojson, {
@@ -278,7 +408,7 @@
       }
     };
 
-    // --- LIVE GPS TRACKING ---
+    // --- GPS CONTROLLER ---
     let watchId = null;
     let userMarker = null;
 
@@ -294,7 +424,7 @@
         btn.classList.remove('tracking');
       } else {
         if (!navigator.geolocation) {
-          alert('GPS is not supported on this browser.');
+          alert('GPS is not supported on this device.');
           return;
         }
         btn.classList.add('tracking');
@@ -313,8 +443,7 @@
             }
           },
           err => {
-            console.warn('GPS location error:', err);
-            alert('Enable location access in your browser to view current cab position.');
+            alert('Enable location permissions on your browser to view your cab position.');
             btn.classList.remove('tracking');
             watchId = null;
           },
@@ -323,33 +452,85 @@
       }
     };
 
-    // --- ADMIN MASTER RESET (PIN: 1234) ---
-    window.triggerMasterReset = async function() {
-      const pin = prompt('Enter Admin PIN to reset all township roads back to RED:');
+    // --- MODAL & MENU HANDLERS ---
+    window.openSettingsModal = function() {
+      document.getElementById('settingsModal').style.display = 'flex';
+    };
+
+    window.closeSettingsModal = function() {
+      document.getElementById('settingsModal').style.display = 'none';
+      document.getElementById('adminPin').value = '';
+    };
+
+    window.handlePresetChange = function(val) {
+      const customGroup = document.getElementById('customDaysGroup');
+      if (val === 'custom') {
+        customGroup.style.display = 'block';
+      } else {
+        customGroup.style.display = 'none';
+        if (val === 'standard') {
+          document.getElementById('inputGreenDays').value = 7;
+          document.getElementById('inputYellowDays').value = 14;
+        } else if (val === 'quick') {
+          document.getElementById('inputGreenDays').value = 3;
+          document.getElementById('inputYellowDays').value = 7;
+        } else if (val === 'extended') {
+          document.getElementById('inputGreenDays').value = 14;
+          document.getElementById('inputYellowDays').value = 28;
+        }
+      }
+    };
+
+    window.applySettingsAndReset = async function() {
+      const pin = document.getElementById('adminPin').value;
       if (pin !== '1234') {
-        if (pin !== null) alert('Incorrect PIN');
+        alert('Incorrect Admin PIN.');
         return;
       }
 
-      if (!confirm('Are you sure you want to reset every road in the township to "Needs Graded"?')) return;
+      greenThresholdDays = parseInt(document.getElementById('inputGreenDays').value, 10) || 7;
+      yellowThresholdDays = parseInt(document.getElementById('inputYellowDays').value, 10) || 14;
 
-      const now = new Date().toISOString();
+      const resetType = document.getElementById('resetTypeSelect').value;
+      const now = new Date();
+      const rowsToUpdate = [];
 
-      // Reset client layers locally
       Object.keys(roadLayers).forEach(id => {
-        roadStatuses[id] = { segment_id: id, status: 'not_graded', updated_at: now, notes: '' };
-        applyStyle(id);
+        const cur = roadStatuses[id];
+        let shouldReset = false;
+
+        if (resetType === 'all') {
+          shouldReset = true;
+        } else if (cur && cur.updated_at) {
+          const daysOld = (now - new Date(cur.updated_at)) / (1000 * 60 * 60 * 24);
+          if (resetType === 'older_than_green' && daysOld > greenThresholdDays) shouldReset = true;
+          if (resetType === 'older_than_yellow' && daysOld > yellowThresholdDays) shouldReset = true;
+        }
+
+        if (shouldReset) {
+          roadStatuses[id] = { segment_id: id, status: 'not_graded', updated_at: now.toISOString(), notes: '' };
+          rowsToUpdate.push(roadStatuses[id]);
+        }
       });
 
+      redrawAllRoads();
+
       if (dbClient) {
-        const rows = Object.keys(roadLayers).map(id => ({
-          segment_id: id,
-          status: 'not_graded',
-          updated_at: now,
-          notes: ''
-        }));
-        await dbClient.from('road_status').upsert(rows);
+        // Save cycle configuration
+        await dbClient.from('township_settings').upsert({
+          id: 'cycle_config',
+          green_days: greenThresholdDays,
+          yellow_days: yellowThresholdDays
+        });
+
+        // Push road resets
+        if (rowsToUpdate.length > 0) {
+          await dbClient.from('road_status').upsert(rowsToUpdate);
+        }
       }
+
+      alert(`Updated: Green < ${greenThresholdDays}d, Yellow < ${yellowThresholdDays}d. Reset applied.`);
+      closeSettingsModal();
     };
   </script>
 </body>
