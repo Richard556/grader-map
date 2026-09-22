@@ -39,13 +39,14 @@
       font-size: 13px;
       color: #94a3b8;
       margin-bottom: 12px;
+      line-height: 1.4;
     }
     .cab-btn {
       display: block;
       width: 100%;
-      padding: 12px 10px;
+      padding: 14px 10px;
       margin-bottom: 8px;
-      font-size: 15px;
+      font-size: 16px;
       font-weight: 700;
       border: none;
       border-radius: 8px;
@@ -77,6 +78,33 @@
       color: #fff;
       font-size: 14px;
       box-sizing: border-box;
+    }
+
+    /* Operator Active Badge (Top Center) */
+    .operator-badge {
+      position: absolute;
+      top: 14px;
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 1000;
+      background: rgba(15, 23, 42, 0.9);
+      color: #38bdf8;
+      border: 1px solid #0284c7;
+      padding: 8px 14px;
+      border-radius: 20px;
+      font-size: 13px;
+      font-weight: 700;
+      cursor: pointer;
+      backdrop-filter: blur(4px);
+      box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .operator-badge span {
+      color: #94a3b8;
+      font-size: 11px;
+      text-decoration: underline;
     }
 
     /* GPS Control Button */
@@ -121,13 +149,13 @@
       box-shadow: 0 4px 12px rgba(0,0,0,0.4);
     }
 
-    /* Settings Modal Overlay */
+    /* Modal Overlays */
     .modal-overlay {
       display: none;
       position: fixed;
       top: 0; left: 0; right: 0; bottom: 0;
-      background: rgba(0,0,0,0.7);
-      z-index: 2000;
+      background: rgba(0,0,0,0.75);
+      z-index: 3000;
       align-items: center;
       justify-content: center;
       padding: 16px;
@@ -143,8 +171,14 @@
       border: 1px solid #334155;
     }
     .modal-card h2 {
-      margin: 0 0 12px;
+      margin: 0 0 10px;
       font-size: 18px;
+    }
+    .modal-card p {
+      font-size: 13px;
+      color: #94a3b8;
+      margin-top: 0;
+      margin-bottom: 12px;
     }
     .modal-card label {
       display: block;
@@ -153,15 +187,15 @@
       margin-top: 10px;
       margin-bottom: 4px;
     }
-    .modal-card select, .modal-card input[type="number"], .modal-card input[type="password"] {
+    .modal-card select, .modal-card input[type="text"], .modal-card input[type="number"], .modal-card input[type="password"] {
       width: 100%;
-      padding: 10px;
+      padding: 12px 10px;
       border-radius: 6px;
       border: 1px solid #475569;
       background: #0f172a;
       color: #fff;
       box-sizing: border-box;
-      font-size: 14px;
+      font-size: 15px;
     }
     .modal-actions {
       display: flex;
@@ -172,7 +206,7 @@
       background: #475569;
       color: #fff;
       flex: 1;
-      padding: 10px;
+      padding: 12px;
       border-radius: 6px;
       border: none;
       font-weight: bold;
@@ -182,7 +216,7 @@
       background: #2563eb;
       color: #fff;
       flex: 1;
-      padding: 10px;
+      padding: 12px;
       border-radius: 6px;
       border: none;
       font-weight: bold;
@@ -201,8 +235,33 @@
 </head>
 <body>
   <div id="map"></div>
+  
+  <div id="operatorBadge" class="operator-badge" onclick="openOperatorModal()">
+    🚜 <span id="currentOperatorName">Select Driver</span>
+  </div>
+
   <button id="gpsToggle" class="gps-btn" onclick="toggleGPS()" title="Find My Location">📍</button>
   <button class="admin-menu-btn" onclick="openSettingsModal()">⚙️ Cycle & Reset Settings</button>
+
+  <!-- Operator Sign-In Modal -->
+  <div id="operatorModal" class="modal-overlay">
+    <div class="modal-card">
+      <h2>Select Operator</h2>
+      <p>Identify who is blading so updates are logged under your name.</p>
+      
+      <div id="existingOperatorContainer" style="display:none;">
+        <label>Previous Drivers on this Machine</label>
+        <select id="operatorSelect" onchange="handleOperatorDropdown(this.value)"></select>
+      </div>
+
+      <label>Or Enter Your Name / Initials</label>
+      <input type="text" id="operatorInput" placeholder="e.g. Richard L." />
+
+      <div class="modal-actions">
+        <button class="btn-save" onclick="saveOperatorChoice()">Confirm & Start</button>
+      </div>
+    </div>
+  </div>
 
   <!-- Cycle & Admin Settings Modal -->
   <div id="settingsModal" class="modal-overlay">
@@ -253,11 +312,14 @@
 
     let greenThresholdDays = 7;
     let yellowThresholdDays = 14;
+    let currentOperator = localStorage.getItem('sverdrup_operator') || '';
 
+    // Initialize Map with 28px touch tolerance for easy line tapping
     const map = L.map('map', {
       center: [43.7138, -96.7222],
       zoom: 12,
-      zoomControl: true
+      zoomControl: true,
+      renderer: L.canvas({ tolerance: 28 })
     });
 
     L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
@@ -268,23 +330,79 @@
     let roadStatuses = {};
     let roadLayers = {};
 
+    // --- OPERATOR MANAGEMENT ---
+    function updateOperatorUI() {
+      const badgeText = document.getElementById('currentOperatorName');
+      if (currentOperator) {
+        badgeText.innerHTML = `${currentOperator} <span>(Switch)</span>`;
+      } else {
+        badgeText.innerHTML = `Set Driver <span>(Tap)</span>`;
+      }
+    }
+
+    function openOperatorModal() {
+      const modal = document.getElementById('operatorModal');
+      const select = document.getElementById('operatorSelect');
+      const container = document.getElementById('existingOperatorContainer');
+      const input = document.getElementById('operatorInput');
+
+      let savedDrivers = JSON.parse(localStorage.getItem('sverdrup_known_operators') || '[]');
+      if (savedDrivers.length > 0) {
+        container.style.display = 'block';
+        select.innerHTML = '<option value="">-- Choose Existing Driver --</option>' + 
+          savedDrivers.map(d => `<option value="${d}">${d}</option>`).join('');
+      } else {
+        container.style.display = 'none';
+      }
+
+      input.value = currentOperator;
+      modal.style.display = 'flex';
+    }
+
+    function handleOperatorDropdown(val) {
+      if (val) {
+        document.getElementById('operatorInput').value = val;
+      }
+    }
+
+    function saveOperatorChoice() {
+      const name = document.getElementById('operatorInput').value.trim();
+      if (!name) {
+        alert('Please enter your name or initials.');
+        return;
+      }
+      currentOperator = name;
+      localStorage.setItem('sverdrup_operator', name);
+
+      let savedDrivers = JSON.parse(localStorage.getItem('sverdrup_known_operators') || '[]');
+      if (!savedDrivers.includes(name)) {
+        savedDrivers.push(name);
+        localStorage.setItem('sverdrup_known_operators', JSON.stringify(savedDrivers));
+      }
+
+      updateOperatorUI();
+      document.getElementById('operatorModal').style.display = 'none';
+    }
+
+    // Auto-prompt on first open if operator is empty
+    if (!currentOperator) {
+      openOperatorModal();
+    } else {
+      updateOperatorUI();
+    }
+
+    // --- VISUAL & ROAD STYLING ---
     function calculateRoadVisual(status, timestamp) {
-      // 1. Explicitly flagged needs rock / work
       if (status === 'needs_work') {
         return { color: '#ea580c', dashArray: null, weight: 7 }; // Solid Orange
       }
-      
-      // 2. Explicitly flagged "Needs Graded" by an operator
       if (status === 'not_graded') {
-        return { color: '#f43f5e', dashArray: null, weight: 8 }; // High-Visibility Crimson
+        return { color: '#f43f5e', dashArray: null, weight: 8 }; // Crimson Needs Graded
       }
-
-      // 3. Default / untouched road (no record or empty status)
       if (!timestamp || !status || status === 'untouched') {
         return { color: '#94a3b8', dashArray: '8, 8', weight: 4.5 }; // Dashed Muted Slate
       }
 
-      // 4. Completed cycle aging
       const daysOld = (new Date() - new Date(timestamp)) / (1000 * 60 * 60 * 24);
       if (daysOld <= greenThresholdDays) {
         return { color: '#16a34a', dashArray: null, weight: 7 };  // Solid Green
@@ -358,7 +476,6 @@
           'postgres_changes',
           { event: '*', schema: 'public', table: 'road_status' },
           payload => {
-            console.log('Realtime change received:', payload);
             const row = payload.new;
             if (row && row.segment_id) {
               roadStatuses[row.segment_id] = row;
@@ -366,9 +483,7 @@
             }
           }
         )
-        .subscribe(status => {
-          console.log('Realtime Status:', status);
-        });
+        .subscribe();
     }
 
     fetch('sverdrup_roads.geojson')
@@ -380,6 +495,24 @@
         await loadSettings();
         await fetchStatuses();
 
+        // 1. INVISIBLE WIDE HITBOX LAYER (34px wide for foolproof cab tapping)
+        L.geoJSON(geojson, {
+          style: () => ({
+            color: '#000',
+            weight: 34,
+            opacity: 0.001
+          }),
+          onEachFeature: (feature, layer) => {
+            const id = getRoadId(feature.properties);
+            layer.on('click', () => {
+              if (roadLayers[id]) {
+                roadLayers[id].fire('click');
+              }
+            });
+          }
+        }).addTo(map);
+
+        // 2. VISIBLE ROAD LINES LAYER
         L.geoJSON(geojson, {
           style: feature => {
             const id = getRoadId(feature.properties);
@@ -402,14 +535,15 @@
             layer.on('click', () => {
               const current = roadStatuses[id] || {};
               const lastDate = current.updated_at ? new Date(current.updated_at).toLocaleDateString() : 'Never';
+              const operatorInfo = current.updated_by ? ` by <strong>${current.updated_by}</strong>` : '';
               const lastNote = current.notes ? `<div class="popup-meta"><strong>Note:</strong> ${current.notes}</div>` : '';
 
               const popupHtml = `
                 <div class="popup-container">
                   <div class="popup-title">${name}</div>
-                  <div class="popup-meta">Last Logged: <strong>${lastDate}</strong></div>
+                  <div class="popup-meta">Last Done: <strong>${lastDate}</strong>${operatorInfo}</div>
                   ${lastNote}
-                  <input type="text" id="note_${id}" class="note-input" placeholder="Initials / Notes (optional)" />
+                  <input type="text" id="note_${id}" class="note-input" placeholder="Notes (rock count, washouts, etc.)" />
                   <button class="cab-btn btn-green" onclick="saveStatus('${id}', 'graded')">Done (Graded)</button>
                   <button class="cab-btn btn-orange" onclick="saveStatus('${id}', 'needs_work')">Needs Work / Rock</button>
                   <button class="cab-btn btn-red" onclick="saveStatus('${id}', 'not_graded')">Needs Graded</button>
@@ -424,14 +558,21 @@
       .catch(err => console.error('Error loading geojson:', err));
 
     window.saveStatus = async function(segmentId, newStatus) {
+      if (!currentOperator && newStatus !== 'untouched') {
+        openOperatorModal();
+        return;
+      }
+
       const noteInput = document.getElementById(`note_${segmentId}`);
       const notes = (newStatus === 'untouched') ? '' : (noteInput ? noteInput.value : '');
       const now = (newStatus === 'untouched') ? null : new Date().toISOString();
+      const by = (newStatus === 'untouched') ? null : currentOperator;
 
       roadStatuses[segmentId] = {
         segment_id: segmentId,
         status: newStatus,
         updated_at: now,
+        updated_by: by,
         notes: notes
       };
 
@@ -443,6 +584,7 @@
           segment_id: segmentId,
           status: newStatus,
           updated_at: now,
+          updated_by: by,
           notes: notes
         });
       }
@@ -548,7 +690,7 @@
         }
 
         if (shouldReset) {
-          roadStatuses[id] = { segment_id: id, status: 'untouched', updated_at: null, notes: '' };
+          roadStatuses[id] = { segment_id: id, status: 'untouched', updated_at: null, updated_by: null, notes: '' };
           rowsToUpdate.push(roadStatuses[id]);
         }
       });
