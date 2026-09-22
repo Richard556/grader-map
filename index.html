@@ -111,6 +111,25 @@
       color: #f97316;
     }
 
+    /* Placement Banner (When dropping hazard) */
+    .placement-banner {
+      display: none;
+      position: absolute;
+      top: 65px;
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 1001;
+      background: #f59e0b;
+      color: #000;
+      padding: 8px 16px;
+      border-radius: 20px;
+      font-size: 13px;
+      font-weight: 800;
+      box-shadow: 0 4px 14px rgba(0,0,0,0.6);
+      text-align: center;
+      pointer-events: none;
+    }
+
     /* Operator Active Badge (Top Center) */
     .operator-badge {
       position: absolute;
@@ -169,6 +188,10 @@
     .fab-hazard {
       border-color: #f59e0b;
       color: #f59e0b;
+    }
+    .fab-hazard.active-placing {
+      background: #f59e0b;
+      color: #000;
     }
 
     /* Road Name Labels */
@@ -311,6 +334,8 @@
 <body>
   <div id="map"></div>
   
+  <div id="placementBanner" class="placement-banner">📍 Tap road or map to drop hazard pin</div>
+
   <!-- Left Side Dock Controls -->
   <div class="controls-dock">
     <button id="filterBtn" class="dock-btn" onclick="cycleFilter()">🔍 Filter: All</button>
@@ -359,7 +384,7 @@
       <select id="hazardCategory">
         <option value="Culvert Issue">Culvert Issue / Damaged</option>
         <option value="Washout / Boil">Washout / Soft Boil</option>
-        <option value="Gravel Needed">Gravel Needed</option>
+        <option value="Needs Work / Gravel">Needs Work / Gravel</option>
         <option value="Tree / Debris">Tree / Road Debris</option>
         <option value="Sign Down">Sign Damaged / Down</option>
       </select>
@@ -368,7 +393,6 @@
       <input type="text" id="hazardNotes" placeholder="e.g. 18in culvert crushed on east side" />
 
       <label>Attach Photo (Launches Camera)</label>
-      <!-- capture="environment" launches rear camera directly on phones -->
       <input type="file" id="hazardCameraInput" accept="image/*" capture="environment" style="background:#0f172a; color:#cbd5e1; padding:8px;" />
 
       <div class="modal-actions">
@@ -432,6 +456,7 @@
     let showLabels = false;
     let activeGpsCoords = null;
     let pendingHazardCoords = null;
+    let isPlacingHazard = false;
 
     const map = L.map('map', {
       center: [43.7138, -96.7222],
@@ -447,6 +472,7 @@
 
     let roadStatuses = {};
     let roadLayers = {};
+    let roadNames = {};
     let hazardMarkers = {};
 
     // --- OPERATOR MANAGEMENT ---
@@ -509,26 +535,26 @@
       updateOperatorUI();
     }
 
-    // --- ROAD STYLING (TERMINOLOGY: GRAVEL) ---
+    // --- ROAD STYLING ---
     function calculateRoadVisual(status, timestamp) {
-      if (status === 'gravel') {
-        return { color: '#ea580c', dashArray: null, weight: 7, category: 'gravel' }; // Solid Orange
+      if (status === 'gravel' || status === 'needs_work') {
+        return { color: '#ea580c', dashArray: null, weight: 7, category: 'gravel' };
       }
       if (status === 'not_graded') {
-        return { color: '#f43f5e', dashArray: null, weight: 8, category: 'not_graded' }; // Crimson
+        return { color: '#f43f5e', dashArray: null, weight: 8, category: 'not_graded' };
       }
       if (!timestamp || !status || status === 'untouched') {
-        return { color: '#94a3b8', dashArray: '8, 8', weight: 4.5, category: 'untouched' }; // Dashed Muted Slate
+        return { color: '#94a3b8', dashArray: '8, 8', weight: 4.5, category: 'untouched' };
       }
 
       const daysOld = (new Date() - new Date(timestamp)) / (1000 * 60 * 60 * 24);
       if (daysOld <= greenThresholdDays) {
-        return { color: '#16a34a', dashArray: null, weight: 7, category: 'graded' };  // Solid Green
+        return { color: '#16a34a', dashArray: null, weight: 7, category: 'graded' };
       }
       if (daysOld <= yellowThresholdDays) {
-        return { color: '#eab308', dashArray: null, weight: 7, category: 'warning' }; // Solid Yellow
+        return { color: '#eab308', dashArray: null, weight: 7, category: 'warning' };
       }
-      return { color: '#b91c1c', dashArray: null, weight: 7, category: 'not_graded' }; // Overdue Wine Red
+      return { color: '#b91c1c', dashArray: null, weight: 7, category: 'not_graded' };
     }
 
     function getRoadId(props) {
@@ -573,7 +599,7 @@
       const btn = document.getElementById('filterBtn');
       if (currentFilter === 'all') {
         currentFilter = 'gravel';
-        btn.innerHTML = '🔍 Only: Gravel';
+        btn.innerHTML = '🔍 Only: Needs Work / Gravel';
         btn.classList.add('active-filter');
       } else if (currentFilter === 'gravel') {
         currentFilter = 'not_graded';
@@ -591,18 +617,29 @@
       redrawAllRoads();
     };
 
-    // --- LABELS TOGGLE ---
+    // --- CLEAN LABELS TOGGLE ---
     window.toggleLabels = function() {
       showLabels = !showLabels;
       const btn = document.getElementById('labelBtn');
       btn.innerHTML = showLabels ? '🏷️ Labels: ON' : '🏷️ Labels: OFF';
       btn.classList.toggle('active-filter', showLabels);
 
-      Object.values(roadLayers).forEach(layer => {
+      Object.keys(roadLayers).forEach(id => {
+        const layer = roadLayers[id];
+        const name = roadNames[id];
         if (showLabels) {
+          if (!layer.getTooltip()) {
+            layer.bindTooltip(name, {
+              permanent: true,
+              direction: 'center',
+              className: 'road-label'
+            });
+          }
           layer.openTooltip();
         } else {
-          layer.closeTooltip();
+          if (layer.getTooltip()) {
+            layer.unbindTooltip();
+          }
         }
       });
     };
@@ -627,7 +664,6 @@
       const { data, error } = await dbClient.from('road_status').select('*');
       if (data && !error) {
         data.forEach(row => {
-          // Normalize legacy 'needs_work' to 'gravel'
           if (row.status === 'needs_work') row.status = 'gravel';
           roadStatuses[row.segment_id] = row;
           applyStyle(row.segment_id);
@@ -635,7 +671,7 @@
       }
     }
 
-    // --- HAZARD PINS SYSTEM WITH PHOTOS ---
+    // --- HAZARD PIN SYSTEM ---
     function renderHazardMarker(pin) {
       if (hazardMarkers[pin.id]) {
         map.removeLayer(hazardMarkers[pin.id]);
@@ -676,17 +712,40 @@
     }
 
     window.startHazardReport = function() {
-      if (activeGpsCoords) {
-        pendingHazardCoords = activeGpsCoords;
-        openHazardModal();
-      } else {
-        alert('Tap on the map where the hazard is located.');
-        map.once('click', e => {
-          pendingHazardCoords = [e.latlng.lat, e.latlng.lng];
-          openHazardModal();
-        });
+      if (isPlacingHazard) {
+        cancelHazardPlacement();
+        return;
       }
+      
+      if (activeGpsCoords) {
+        if (confirm("Drop hazard pin at your current cab location?\n\n(Tap Cancel to tap on map/road instead)")) {
+          pendingHazardCoords = activeGpsCoords;
+          openHazardModal();
+          return;
+        }
+      }
+
+      isPlacingHazard = true;
+      document.getElementById('hazardReportBtn').classList.add('active-placing');
+      document.getElementById('placementBanner').style.display = 'block';
+      document.getElementById('map').style.cursor = 'crosshair';
     };
+
+    function cancelHazardPlacement() {
+      isPlacingHazard = false;
+      document.getElementById('hazardReportBtn').classList.remove('active-placing');
+      document.getElementById('placementBanner').style.display = 'none';
+      document.getElementById('map').style.cursor = '';
+      pendingHazardCoords = null;
+    }
+
+    map.on('click', e => {
+      if (isPlacingHazard) {
+        pendingHazardCoords = [e.latlng.lat, e.latlng.lng];
+        cancelHazardPlacement();
+        openHazardModal();
+      }
+    });
 
     function openHazardModal() {
       document.getElementById('hazardNotes').value = '';
@@ -696,10 +755,9 @@
 
     window.closeHazardModal = function() {
       document.getElementById('hazardModal').style.display = 'none';
-      pendingHazardCoords = null;
+      cancelHazardPlacement();
     };
 
-    // Client-side image downscaling to prevent storage bloat (~150 KB JPEG)
     function compressImage(file) {
       return new Promise((resolve, reject) => {
         const reader = new FileReader();
@@ -762,12 +820,11 @@
         const pinId = 'pin_' + Date.now();
         let photoUrl = null;
 
-        // Compress and upload photo to Supabase storage if taken
         if (fileInput.files && fileInput.files[0]) {
           const compressedBlob = await compressImage(fileInput.files[0]);
           const filePath = `${pinId}.jpg`;
 
-          const { data: uploadData, error: uploadError } = await dbClient.storage
+          const { error: uploadError } = await dbClient.storage
             .from('hazard_photos')
             .upload(filePath, compressedBlob, { contentType: 'image/jpeg' });
 
@@ -798,7 +855,7 @@
         }
       } catch (err) {
         console.error('Error saving hazard:', err);
-        alert('Error uploading hazard.');
+        alert('Error saving hazard.');
       } finally {
         saveBtn.innerText = 'Save Hazard';
         saveBtn.disabled = false;
@@ -814,7 +871,6 @@
 
         if (dbClient) {
           await dbClient.from('hazard_pins').delete().eq('id', pinId);
-          // Delete photo from bucket to keep free storage clean
           if (photoUrl) {
             const fileName = `${pinId}.jpg`;
             await dbClient.storage.from('hazard_photos').remove([fileName]);
@@ -857,6 +913,7 @@
         .subscribe();
     }
 
+    // --- LOAD ROADS ---
     fetch('sverdrup_roads.geojson')
       .then(res => {
         if (!res.ok) throw new Error('File not found');
@@ -876,15 +933,21 @@
           }),
           onEachFeature: (feature, layer) => {
             const id = getRoadId(feature.properties);
-            layer.on('click', () => {
+            layer.on('click', e => {
+              if (isPlacingHazard) {
+                pendingHazardCoords = [e.latlng.lat, e.latlng.lng];
+                cancelHazardPlacement();
+                openHazardModal();
+                return;
+              }
               if (roadLayers[id]) {
-                roadLayers[id].fire('click');
+                roadLayers[id].fire('click', e);
               }
             });
           }
         }).addTo(map);
 
-        // 2. VISIBLE ROAD LINES LAYER WITH LABELS
+        // 2. VISIBLE ROAD LINES LAYER
         L.geoJSON(geojson, {
           style: feature => {
             const id = getRoadId(feature.properties);
@@ -903,15 +966,16 @@
             const id = getRoadId(feature.properties);
             const name = getRoadName(feature.properties);
             roadLayers[id] = layer;
+            roadNames[id] = name;
 
-            layer.bindTooltip(name, {
-              permanent: true,
-              direction: 'center',
-              className: 'road-label'
-            });
-            layer.closeTooltip();
+            layer.on('click', e => {
+              if (isPlacingHazard) {
+                pendingHazardCoords = [e.latlng.lat, e.latlng.lng];
+                cancelHazardPlacement();
+                openHazardModal();
+                return;
+              }
 
-            layer.on('click', () => {
               const current = roadStatuses[id] || {};
               const lastDate = current.updated_at ? new Date(current.updated_at).toLocaleDateString() : 'Never';
               const operatorInfo = current.updated_by ? ` by <strong>${current.updated_by}</strong>` : '';
@@ -924,7 +988,7 @@
                   ${lastNote}
                   <input type="text" id="note_${id}" class="note-input" placeholder="Notes (tons, washouts, etc.)" />
                   <button class="cab-btn btn-green" onclick="saveStatus('${id}', 'graded')">Done (Graded)</button>
-                  <button class="cab-btn btn-orange" onclick="saveStatus('${id}', 'gravel')">Gravel</button>
+                  <button class="cab-btn btn-orange" onclick="saveStatus('${id}', 'gravel')">Needs Work / Gravel</button>
                   <button class="cab-btn btn-red" onclick="saveStatus('${id}', 'not_graded')">Needs Graded</button>
                   <button class="cab-btn btn-gray" onclick="saveStatus('${id}', 'untouched')">Reset to Untouched (Gray)</button>
                 </div>
