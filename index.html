@@ -262,14 +262,31 @@
     let roadStatuses = {};
     let roadLayers = {};
 
-    function calculateColor(status, timestamp) {
-      if (status === 'needs_work') return '#ea580c'; // Orange
-      if (!timestamp || status === 'not_graded') return '#dc2626'; // Red
+    function calculateRoadVisual(status, timestamp) {
+      // 1. Explicitly flagged needs rock / culvert / work
+      if (status === 'needs_work') {
+        return { color: '#ea580c', dashArray: null, weight: 7 }; // Solid Orange
+      }
+      
+      // 2. Explicitly flagged "Needs Graded" by an operator
+      if (status === 'not_graded') {
+        return { color: '#dc2626', dashArray: null, weight: 7 }; // Solid Bright Red
+      }
 
+      // 3. Never logged / untouched default
+      if (!timestamp || !status) {
+        return { color: '#94a3b8', dashArray: '6, 8', weight: 4.5 }; // Dashed Muted Slate Gray
+      }
+
+      // 4. Completed cycle aging
       const daysOld = (new Date() - new Date(timestamp)) / (1000 * 60 * 60 * 24);
-      if (daysOld <= greenThresholdDays) return '#16a34a';  // Green
-      if (daysOld <= yellowThresholdDays) return '#eab308'; // Yellow
-      return '#dc2626';                                    // Red (Overdue)
+      if (daysOld <= greenThresholdDays) {
+        return { color: '#16a34a', dashArray: null, weight: 7 };  // Solid Green
+      }
+      if (daysOld <= yellowThresholdDays) {
+        return { color: '#eab308', dashArray: null, weight: 7 }; // Solid Yellow
+      }
+      return { color: '#dc2626', dashArray: null, weight: 7 };     // Solid Red (Overdue)
     }
 
     function getRoadId(props) {
@@ -289,10 +306,13 @@
     function applyStyle(segmentId) {
       const current = roadStatuses[segmentId];
       if (roadLayers[segmentId]) {
-        const newColor = current ? calculateColor(current.status, current.updated_at) : '#dc2626';
+        const visual = current 
+          ? calculateRoadVisual(current.status, current.updated_at) 
+          : calculateRoadVisual(null, null);
         roadLayers[segmentId].setStyle({
-          color: newColor,
-          weight: 7,
+          color: visual.color,
+          weight: visual.weight,
+          dashArray: visual.dashArray,
           opacity: 0.95
         });
       }
@@ -358,9 +378,13 @@
           style: feature => {
             const id = getRoadId(feature.properties);
             const current = roadStatuses[id];
+            const visual = current 
+              ? calculateRoadVisual(current.status, current.updated_at) 
+              : calculateRoadVisual(null, null);
             return {
-              color: current ? calculateColor(current.status, current.updated_at) : '#dc2626',
-              weight: 7,
+              color: visual.color,
+              weight: visual.weight,
+              dashArray: visual.dashArray,
               opacity: 0.95
             };
           },
