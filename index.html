@@ -16,7 +16,6 @@
       background: #111;
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
     }
-    /* Cab-optimized touch interface */
     .leaflet-popup-content-wrapper {
       background: #1e293b;
       color: #fff;
@@ -79,22 +78,21 @@
   <div id="map"></div>
 
   <script>
-    // --- SUPABASE CONFIGURATION ---
-    // Replace these placeholders with your actual keys from Supabase Settings > API
+    // --- SUPABASE KEYS ---
     const SUPABASE_URL = 'YOUR_SUPABASE_URL';
     const SUPABASE_ANON_KEY = 'YOUR_PUBLIC_ANON_KEY';
 
-    const hasSupabase = !SUPABASE_URL.includes('YOUR_SUPABASE_URL');
-    const supabase = hasSupabase ? window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY) : null;
+    const clientActive = !SUPABASE_URL.includes('YOUR_SUPABASE_URL');
+    const dbClient = clientActive ? window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY) : null;
 
-    // Center map over Sverdrup Township
+    // Center over Sverdrup Township
     const map = L.map('map', {
       center: [43.7138, -96.7222],
       zoom: 12,
       zoomControl: true
     });
 
-    // High-resolution satellite basemap
+    // Satellite Imagery
     L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
       attribution: 'Esri World Imagery',
       maxZoom: 18
@@ -103,7 +101,6 @@
     let roadStatuses = {};
     let roadLayers = {};
 
-    // Determine segment color based on status and time elapsed
     function calculateColor(status, timestamp) {
       if (status === 'needs_work') return '#ea580c'; // Orange
       if (!timestamp || status === 'not_graded') return '#dc2626'; // Red
@@ -122,10 +119,9 @@
       return props.STNM1 || props.STREETNAME || props.Name || 'Township Road';
     }
 
-    // Load initial statuses from Supabase
     async function fetchStatuses() {
-      if (!supabase) return;
-      const { data, error } = await supabase.from('road_status').select('*');
+      if (!dbClient) return;
+      const { data, error } = await dbClient.from('road_status').select('*');
       if (data && !error) {
         data.forEach(row => {
           roadStatuses[row.segment_id] = row;
@@ -138,9 +134,12 @@
       }
     }
 
-    // Load and render GeoJSON roads
+    // Load GeoJSON road grid
     fetch('sverdrup_roads.geojson')
-      .then(res => res.json())
+      .then(res => {
+        if (!res.ok) throw new Error('File not found');
+        return res.json();
+      })
       .then(async geojson => {
         await fetchStatuses();
 
@@ -169,7 +168,7 @@
                   <div class="popup-title">${name}</div>
                   <div class="popup-meta">Last Logged: <strong>${lastDate}</strong></div>
                   ${lastNote}
-                  <input type="text" id="note_${id}" class="note-input" placeholder="Initials / Notes (optional)" value="" />
+                  <input type="text" id="note_${id}" class="note-input" placeholder="Initials / Notes (optional)" />
                   <button class="cab-btn btn-green" onclick="saveStatus('${id}', 'graded')">Done (Graded)</button>
                   <button class="cab-btn btn-orange" onclick="saveStatus('${id}', 'needs_work')">Needs Work / Rock</button>
                   <button class="cab-btn btn-red" onclick="saveStatus('${id}', 'not_graded')">Needs Graded</button>
@@ -182,7 +181,6 @@
       })
       .catch(err => console.error('Error loading sverdrup_roads.geojson:', err));
 
-    // Save status to Supabase and update line color
     window.saveStatus = async function(segmentId, newStatus) {
       const noteInput = document.getElementById(`note_${segmentId}`);
       const notes = noteInput ? noteInput.value : '';
@@ -203,8 +201,8 @@
 
       map.closePopup();
 
-      if (supabase) {
-        await supabase.from('road_status').upsert({
+      if (dbClient) {
+        await dbClient.from('road_status').upsert({
           segment_id: segmentId,
           status: newStatus,
           updated_at: now,
