@@ -212,7 +212,7 @@
       </select>
 
       <div id="customDaysGroup" style="display:none;">
-        <label>Days Road Stays Green (< span)</label>
+        <label>Days Road Stays Green (&lt; span)</label>
         <input type="number" id="inputGreenDays" value="7" min="1" max="90" />
 
         <label>Days Road Turns Yellow (Warning)</label>
@@ -282,18 +282,18 @@
 
     function redrawAllRoads() {
       Object.keys(roadLayers).forEach(id => {
-        const cur = roadStatuses[id];
-        roadLayers[id].setStyle({
-          color: cur ? calculateColor(cur.status, cur.updated_at) : '#dc2626'
-        });
+        applyStyle(id);
       });
     }
 
     function applyStyle(segmentId) {
       const current = roadStatuses[segmentId];
       if (roadLayers[segmentId]) {
+        const newColor = current ? calculateColor(current.status, current.updated_at) : '#dc2626';
         roadLayers[segmentId].setStyle({
-          color: current ? calculateColor(current.status, current.updated_at) : '#dc2626'
+          color: newColor,
+          weight: 7,
+          opacity: 0.95
         });
       }
     }
@@ -309,7 +309,7 @@
           document.getElementById('inputYellowDays').value = data.yellow_days;
         }
       } catch (err) {
-        console.log('No settings table found, using defaults.');
+        console.log('Using default cycle thresholds.');
       }
     }
 
@@ -324,16 +324,25 @@
       }
     }
 
+    // --- INSTANT REALTIME WEBSOCKET SYNC ---
     if (dbClient) {
       dbClient
         .channel('realtime_roads')
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'road_status' }, payload => {
-          if (payload.new && payload.new.segment_id) {
-            roadStatuses[payload.new.segment_id] = payload.new;
-            applyStyle(payload.new.segment_id);
+        .on(
+          'postgres_changes',
+          { event: '*', schema: 'public', table: 'road_status' },
+          payload => {
+            console.log('Realtime change received:', payload);
+            const row = payload.new;
+            if (row && row.segment_id) {
+              roadStatuses[row.segment_id] = row;
+              applyStyle(row.segment_id);
+            }
           }
-        })
-        .subscribe();
+        )
+        .subscribe(status => {
+          console.log('Realtime Status:', status);
+        });
     }
 
     fetch('sverdrup_roads.geojson')
@@ -516,14 +525,12 @@
       redrawAllRoads();
 
       if (dbClient) {
-        // Save cycle configuration
         await dbClient.from('township_settings').upsert({
           id: 'cycle_config',
           green_days: greenThresholdDays,
           yellow_days: yellowThresholdDays
         });
 
-        // Push road resets
         if (rowsToUpdate.length > 0) {
           await dbClient.from('road_status').upsert(rowsToUpdate);
         }
