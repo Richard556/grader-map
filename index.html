@@ -80,6 +80,37 @@
       box-sizing: border-box;
     }
 
+    /* Top Left Control Dock (Filter & Labels) */
+    .controls-dock {
+      position: absolute;
+      top: 14px;
+      left: 14px;
+      z-index: 1000;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .dock-btn {
+      background: rgba(15, 23, 42, 0.9);
+      color: #f8fafc;
+      border: 1px solid #475569;
+      padding: 9px 12px;
+      border-radius: 8px;
+      font-size: 13px;
+      font-weight: 700;
+      cursor: pointer;
+      backdrop-filter: blur(4px);
+      box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      white-space: nowrap;
+    }
+    .dock-btn.active-filter {
+      border-color: #f97316;
+      color: #f97316;
+    }
+
     /* Operator Active Badge (Top Center) */
     .operator-badge {
       position: absolute;
@@ -129,6 +160,25 @@
     .gps-btn.tracking {
       background: #38bdf8;
       color: #0f172a;
+    }
+
+    /* Road Name Labels */
+    .road-label {
+      background: rgba(15, 23, 42, 0.85);
+      border: 1px solid #475569;
+      color: #f8fafc;
+      font-size: 11px;
+      font-weight: 700;
+      padding: 2px 6px;
+      border-radius: 4px;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.5);
+      white-space: nowrap;
+    }
+    .leaflet-tooltip-top:before,
+    .leaflet-tooltip-bottom:before,
+    .leaflet-tooltip-left:before,
+    .leaflet-tooltip-right:before {
+      display: none;
     }
 
     /* Admin Settings Trigger */
@@ -236,6 +286,12 @@
 <body>
   <div id="map"></div>
   
+  <!-- Left Side Dock Controls -->
+  <div class="controls-dock">
+    <button id="filterBtn" class="dock-btn" onclick="cycleFilter()">🔍 Filter: All</button>
+    <button id="labelBtn" class="dock-btn" onclick="toggleLabels()">🏷️ Labels: OFF</button>
+  </div>
+
   <div id="operatorBadge" class="operator-badge" onclick="openOperatorModal()">
     🚜 <span id="currentOperatorName">Select Driver</span>
   </div>
@@ -312,8 +368,12 @@
     let greenThresholdDays = 21;
     let yellowThresholdDays = 30;
     let currentOperator = localStorage.getItem('sverdrup_operator') || '';
+    
+    // Filter modes: 'all', 'needs_work', 'not_graded', 'graded'
+    let currentFilter = 'all';
+    let showLabels = false;
 
-    // Initialize Map with 28px touch tolerance for easy line tapping
+    // Initialize Map with 28px touch tolerance
     const map = L.map('map', {
       center: [43.7138, -96.7222],
       zoom: 12,
@@ -392,23 +452,23 @@
     // --- VISUAL & ROAD STYLING ---
     function calculateRoadVisual(status, timestamp) {
       if (status === 'needs_work') {
-        return { color: '#ea580c', dashArray: null, weight: 7 }; // Solid Orange
+        return { color: '#ea580c', dashArray: null, weight: 7, category: 'needs_work' }; // Solid Orange
       }
       if (status === 'not_graded') {
-        return { color: '#f43f5e', dashArray: null, weight: 8 }; // Crimson Needs Graded
+        return { color: '#f43f5e', dashArray: null, weight: 8, category: 'not_graded' }; // Crimson
       }
       if (!timestamp || !status || status === 'untouched') {
-        return { color: '#94a3b8', dashArray: '8, 8', weight: 4.5 }; // Dashed Muted Slate
+        return { color: '#94a3b8', dashArray: '8, 8', weight: 4.5, category: 'untouched' }; // Dashed Muted Slate
       }
 
       const daysOld = (new Date() - new Date(timestamp)) / (1000 * 60 * 60 * 24);
       if (daysOld <= greenThresholdDays) {
-        return { color: '#16a34a', dashArray: null, weight: 7 };  // Solid Green (< 21 days)
+        return { color: '#16a34a', dashArray: null, weight: 7, category: 'graded' };  // Solid Green
       }
       if (daysOld <= yellowThresholdDays) {
-        return { color: '#eab308', dashArray: null, weight: 7 }; // Solid Yellow (21-30 days)
+        return { color: '#eab308', dashArray: null, weight: 7, category: 'warning' }; // Solid Yellow
       }
-      return { color: '#b91c1c', dashArray: null, weight: 7 };     // Overdue Wine Red (> 30 days)
+      return { color: '#b91c1c', dashArray: null, weight: 7, category: 'not_graded' }; // Overdue Wine Red
     }
 
     function getRoadId(props) {
@@ -431,14 +491,62 @@
         const visual = current 
           ? calculateRoadVisual(current.status, current.updated_at) 
           : calculateRoadVisual(null, null);
+
+        // Filter Check
+        let opacity = 0.95;
+        if (currentFilter !== 'all') {
+          if (currentFilter === 'needs_work' && visual.category !== 'needs_work') opacity = 0.08;
+          if (currentFilter === 'not_graded' && visual.category !== 'not_graded') opacity = 0.08;
+          if (currentFilter === 'graded' && visual.category !== 'graded') opacity = 0.08;
+        }
+
         roadLayers[segmentId].setStyle({
           color: visual.color,
           weight: visual.weight,
           dashArray: visual.dashArray,
-          opacity: 0.95
+          opacity: opacity
         });
       }
     }
+
+    // --- FILTER TOGGLE ---
+    window.cycleFilter = function() {
+      const btn = document.getElementById('filterBtn');
+      if (currentFilter === 'all') {
+        currentFilter = 'needs_work';
+        btn.innerHTML = '🔍 Only: Rock / Work';
+        btn.classList.add('active-filter');
+      } else if (currentFilter === 'needs_work') {
+        currentFilter = 'not_graded';
+        btn.innerHTML = '🔍 Only: Needs Graded';
+        btn.classList.add('active-filter');
+      } else if (currentFilter === 'not_graded') {
+        currentFilter = 'graded';
+        btn.innerHTML = '🔍 Only: Graded';
+        btn.classList.add('active-filter');
+      } else {
+        currentFilter = 'all';
+        btn.innerHTML = '🔍 Filter: All';
+        btn.classList.remove('active-filter');
+      }
+      redrawAllRoads();
+    };
+
+    // --- LABELS TOGGLE ---
+    window.toggleLabels = function() {
+      showLabels = !showLabels;
+      const btn = document.getElementById('labelBtn');
+      btn.innerHTML = showLabels ? '🏷️ Labels: ON' : '🏷️ Labels: OFF';
+      btn.classList.toggle('active-filter', showLabels);
+
+      Object.values(roadLayers).forEach(layer => {
+        if (showLabels) {
+          layer.openTooltip();
+        } else {
+          layer.closeTooltip();
+        }
+      });
+    };
 
     async function loadSettings() {
       if (!dbClient) return;
@@ -493,7 +601,7 @@
         await loadSettings();
         await fetchStatuses();
 
-        // 1. INVISIBLE WIDE HITBOX LAYER (34px wide for easy cab tapping)
+        // 1. INVISIBLE WIDE HITBOX LAYER (34px wide)
         L.geoJSON(geojson, {
           style: () => ({
             color: '#000',
@@ -510,7 +618,7 @@
           }
         }).addTo(map);
 
-        // 2. VISIBLE ROAD LINES LAYER
+        // 2. VISIBLE ROAD LINES LAYER WITH PERMANENT LABELS
         L.geoJSON(geojson, {
           style: feature => {
             const id = getRoadId(feature.properties);
@@ -529,6 +637,16 @@
             const id = getRoadId(feature.properties);
             const name = getRoadName(feature.properties);
             roadLayers[id] = layer;
+
+            // Bind tooltip label to center of road
+            layer.bindTooltip(name, {
+              permanent: true,
+              direction: 'center',
+              className: 'road-label'
+            });
+
+            // Keep tooltips closed initially until toggled
+            layer.closeTooltip();
 
             layer.on('click', () => {
               const current = roadStatuses[id] || {};
