@@ -43,9 +43,9 @@
     .cab-btn {
       display: block;
       width: 100%;
-      padding: 14px 10px;
+      padding: 12px 10px;
       margin-bottom: 8px;
-      font-size: 16px;
+      font-size: 15px;
       font-weight: 700;
       border: none;
       border-radius: 8px;
@@ -61,6 +61,12 @@
     .btn-green { background: #16a34a; }
     .btn-orange { background: #ea580c; }
     .btn-red { background: #dc2626; }
+    .btn-gray { 
+      background: #334155; 
+      color: #cbd5e1;
+      border: 1px dashed #64748b;
+      margin-top: 4px;
+    }
     .note-input {
       width: 100%;
       padding: 10px;
@@ -265,7 +271,7 @@
     function calculateRoadVisual(status, timestamp) {
       // 1. Explicitly flagged needs rock / work
       if (status === 'needs_work') {
-        return { color: '#ea580c', dashArray: null, weight: 7 }; // Solid Orange[cite: 16]
+        return { color: '#ea580c', dashArray: null, weight: 7 }; // Solid Orange
       }
       
       // 2. Explicitly flagged "Needs Graded" by an operator
@@ -281,10 +287,10 @@
       // 4. Completed cycle aging
       const daysOld = (new Date() - new Date(timestamp)) / (1000 * 60 * 60 * 24);
       if (daysOld <= greenThresholdDays) {
-        return { color: '#16a34a', dashArray: null, weight: 7 };  // Solid Green[cite: 16]
+        return { color: '#16a34a', dashArray: null, weight: 7 };  // Solid Green
       }
       if (daysOld <= yellowThresholdDays) {
-        return { color: '#eab308', dashArray: null, weight: 7 }; // Solid Yellow[cite: 16]
+        return { color: '#eab308', dashArray: null, weight: 7 }; // Solid Yellow
       }
       return { color: '#b91c1c', dashArray: null, weight: 7 };     // Overdue Wine Red
     }
@@ -407,6 +413,7 @@
                   <button class="cab-btn btn-green" onclick="saveStatus('${id}', 'graded')">Done (Graded)</button>
                   <button class="cab-btn btn-orange" onclick="saveStatus('${id}', 'needs_work')">Needs Work / Rock</button>
                   <button class="cab-btn btn-red" onclick="saveStatus('${id}', 'not_graded')">Needs Graded</button>
+                  <button class="cab-btn btn-gray" onclick="saveStatus('${id}', 'untouched')">Reset to Untouched (Gray)</button>
                 </div>
               `;
               layer.bindPopup(popupHtml).openPopup();
@@ -418,8 +425,8 @@
 
     window.saveStatus = async function(segmentId, newStatus) {
       const noteInput = document.getElementById(`note_${segmentId}`);
-      const notes = noteInput ? noteInput.value : '';
-      const now = new Date().toISOString();
+      const notes = (newStatus === 'untouched') ? '' : (noteInput ? noteInput.value : '');
+      const now = (newStatus === 'untouched') ? null : new Date().toISOString();
 
       roadStatuses[segmentId] = {
         segment_id: segmentId,
