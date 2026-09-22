@@ -731,18 +731,23 @@
       document.getElementById('map').style.cursor = 'crosshair';
     };
 
-    function cancelHazardPlacement() {
+    function endHazardPlacementMode() {
       isPlacingHazard = false;
       document.getElementById('hazardReportBtn').classList.remove('active-placing');
       document.getElementById('placementBanner').style.display = 'none';
       document.getElementById('map').style.cursor = '';
+    }
+
+    function cancelHazardPlacement() {
+      endHazardPlacementMode();
       pendingHazardCoords = null;
     }
 
+    // Handles map background clicks during placement
     map.on('click', e => {
       if (isPlacingHazard) {
         pendingHazardCoords = [e.latlng.lat, e.latlng.lng];
-        cancelHazardPlacement();
+        endHazardPlacementMode();
         openHazardModal();
       }
     });
@@ -936,7 +941,7 @@
             layer.on('click', e => {
               if (isPlacingHazard) {
                 pendingHazardCoords = [e.latlng.lat, e.latlng.lng];
-                cancelHazardPlacement();
+                endHazardPlacementMode();
                 openHazardModal();
                 return;
               }
@@ -971,7 +976,7 @@
             layer.on('click', e => {
               if (isPlacingHazard) {
                 pendingHazardCoords = [e.latlng.lat, e.latlng.lng];
-                cancelHazardPlacement();
+                endHazardPlacementMode();
                 openHazardModal();
                 return;
               }
