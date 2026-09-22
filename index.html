@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Sverdrup Township Road Tracker</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <style>
+    html, body, #map {
+      height: 100%;
+      width: 100%;
+      margin: 0;
+      padding: 0;
+      background: #111;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    }
+    /* Cab-optimized touch interface */
+    .leaflet-popup-content-wrapper {
+      background: #1e293b;
+      color: #fff;
+      border-radius: 12px;
+      padding: 4px;
+    }
+    .leaflet-popup-tip {
+      background: #1e293b;
+    }
+    .popup-container {
+      min-width: 230px;
+      padding: 6px;
+    }
+    .popup-title {
+      font-size: 19px;
+      font-weight: 700;
+      margin-bottom: 4px;
+      color: #f8fafc;
+    }
+    .popup-meta {
+      font-size: 13px;
+      color: #94a3b8;
+      margin-bottom: 12px;
+    }
+    .cab-btn {
+      display: block;
+      width: 100%;
+      padding: 14px 10px;
+      margin-bottom: 8px;
+      font-size: 16px;
+      font-weight: 700;
+      border: none;
+      border-radius: 8px;
+      color: #fff;
+      cursor: pointer;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    .cab-btn:active {
+      transform: scale(0.98);
+      filter: brightness(0.9);
+    }
+    .btn-green { background: #16a34a; }
+    .btn-orange { background: #ea580c; }
+    .btn-red { background: #dc2626; }
+    .note-input {
+      width: 100%;
+      padding: 10px;
+      margin-bottom: 10px;
+      border-radius: 6px;
+      border: 1px solid #475569;
+      background: #0f172a;
+      color: #fff;
+      font-size: 14px;
+      box-sizing: border-box;
+    }
+  </style>
+</head>
+<body>
+  <div id="map"></div>
+
+  <script>
+    // --- SUPABASE CONFIGURATION ---
+    // Replace these placeholders with your actual keys from Supabase Settings > API
+    const SUPABASE_URL = 'YOUR_SUPABASE_URL';
+    const SUPABASE_ANON_KEY = 'YOUR_PUBLIC_ANON_KEY';
+
+    const hasSupabase = !SUPABASE_URL.includes('YOUR_SUPABASE_URL');
+    const supabase = hasSupabase ? window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY) : null;
+
+    // Center map over Sverdrup Township
+    const map = L.map('map', {
+      center: [43.7138, -96.7222],
+      zoom: 12,
+      zoomControl: true
+    });
+
+    // High-resolution satellite basemap
+    L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+      attribution: 'Esri World Imagery',
+      maxZoom: 18
+    }).addTo(map);
+
+    let roadStatuses = {};
+    let roadLayers = {};
+
+    // Determine segment color based on status and time elapsed
+    function calculateColor(status, timestamp) {
+      if (status === 'needs_work') return '#ea580c'; // Orange
+      if (!timestamp || status === 'not_graded') return '#dc2626'; // Red
+
+      const daysOld = (new Date() - new Date(timestamp)) / (1000 * 60 * 60 * 24);
+      if (daysOld <= 7) return '#16a34a';  // Green (< 7 days)
+      if (daysOld <= 14) return '#eab308'; // Yellow (7-14 days)
+      return '#dc2626';                   // Red (> 14 days)
+    }
+
+    function getRoadId(props) {
+      return String(props.OBJECTID || props.id || props.STNM1 || Math.random());
+    }
+
+    function getRoadName(props) {
+      return props.STNM1 || props.STREETNAME || props.Name || 'Township Road';
+    }
+
+    // Load initial statuses from Supabase
+    async function fetchStatuses() {
+      if (!supabase) return;
+      const { data, error } = await supabase.from('road_status').select('*');
+      if (data && !error) {
+        data.forEach(row => {
+          roadStatuses[row.segment_id] = row;
+          if (roadLayers[row.segment_id]) {
+            roadLayers[row.segment_id].setStyle({
+              color: calculateColor(row.status, row.updated_at)
+            });
+          }
+        });
+      }
+    }
+
+    // Load and render GeoJSON roads
+    fetch('sverdrup_roads.geojson')
+      .then(res => res.json())
+      .then(async geojson => {
+        await fetchStatuses();
+
+        L.geoJSON(geojson, {
+          style: feature => {
+            const id = getRoadId(feature.properties);
+            const current = roadStatuses[id];
+            return {
+              color: current ? calculateColor(current.status, current.updated_at) : '#dc2626',
+              weight: 7,
+              opacity: 0.95
+            };
+          },
+          onEachFeature: (feature, layer) => {
+            const id = getRoadId(feature.properties);
+            const name = getRoadName(feature.properties);
+            roadLayers[id] = layer;
+
+            layer.on('click', () => {
+              const current = roadStatuses[id] || {};
+              const lastDate = current.updated_at ? new Date(current.updated_at).toLocaleDateString() : 'Never';
+              const lastNote = current.notes ? `<div class="popup-meta"><strong>Note:</strong> ${current.notes}</div>` : '';
+
+              const popupHtml = `
+                <div class="popup-container">
+                  <div class="popup-title">${name}</div>
+                  <div class="popup-meta">Last Logged: <strong>${lastDate}</strong></div>
+                  ${lastNote}
+                  <input type="text" id="note_${id}" class="note-input" placeholder="Initials / Notes (optional)" value="" />
+                  <button class="cab-btn btn-green" onclick="saveStatus('${id}', 'graded')">Done (Graded)</button>
+                  <button class="cab-btn btn-orange" onclick="saveStatus('${id}', 'needs_work')">Needs Work / Rock</button>
+                  <button class="cab-btn btn-red" onclick="saveStatus('${id}', 'not_graded')">Needs Graded</button>
+                </div>
+              `;
+              layer.bindPopup(popupHtml).openPopup();
+            });
+          }
+        }).addTo(map);
+      })
+      .catch(err => console.error('Error loading sverdrup_roads.geojson:', err));
+
+    // Save status to Supabase and update line color
+    window.saveStatus = async function(segmentId, newStatus) {
+      const noteInput = document.getElementById(`note_${segmentId}`);
+      const notes = noteInput ? noteInput.value : '';
+      const now = new Date().toISOString();
+
+      roadStatuses[segmentId] = {
+        segment_id: segmentId,
+        status: newStatus,
+        updated_at: now,
+        notes: notes
+      };
+
+      if (roadLayers[segmentId]) {
+        roadLayers[segmentId].setStyle({
+          color: calculateColor(newStatus, now)
+        });
+      }
+
+      map.closePopup();
+
+      if (supabase) {
+        await supabase.from('road_status').upsert({
+          segment_id: segmentId,
+          status: newStatus,
+          updated_at: now,
+          notes: notes
+        });
+      }
+    };
+  </script>
+</body>
+</html>
