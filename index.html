@@ -114,6 +114,30 @@
       border-color: #dc2626;
       color: #fca5a5;
     }
+    .dock-btn.grader-btn.grader-free {
+      border-color: #16a34a;
+      color: #86efac;
+    }
+    .dock-btn.grader-btn.grader-busy {
+      border-color: #f59e0b;
+      color: #fcd34d;
+    }
+    .dock-btn.grader-btn.grader-mine {
+      border-color: #38bdf8;
+      color: #7dd3fc;
+    }
+    .dock-btn.grader-btn.grader-stale {
+      border-color: #dc2626;
+      color: #fca5a5;
+    }
+    .grader-status {
+      font-size: 18px;
+      font-weight: 800;
+      margin: 4px 0 6px;
+    }
+    .grader-status.free { color: #86efac; }
+    .grader-status.busy { color: #fcd34d; }
+    .grader-status.mine { color: #7dd3fc; }
     .dock-btn.mileage-btn {
       display: block;
       text-align: left;
@@ -412,6 +436,7 @@
 
   <!-- Left Side Dock Controls -->
   <div class="controls-dock">
+    <button id="graderBtn" class="dock-btn grader-btn" onclick="openGraderModal()">🚜 Grader: checking…</button>
     <button id="filterBtn" class="dock-btn" onclick="cycleFilter()">🔍 Filter: All</button>
     <button id="labelBtn" class="dock-btn" onclick="toggleLabels()">🏷️ Labels: OFF</button>
     <button id="syncBtn" class="dock-btn sync-btn" style="display:none;" onclick="onSyncBadgeTap()"></button>
@@ -422,7 +447,7 @@
   </div>
 
   <div id="operatorBadge" class="operator-badge" onclick="openOperatorModal()">
-    🚜 <span id="currentOperatorName">Select Driver</span>
+    👤 <span id="currentOperatorName">Select Driver</span>
   </div>
 
   <!-- Right Side Floating Controls -->
@@ -432,6 +457,17 @@
   </div>
 
   <button class="admin-menu-btn" onclick="openSettingsModal()">⚙️ Cycle & Reset Settings</button>
+
+  <!-- Grader Check-In Modal -->
+  <div id="graderModal" class="modal-overlay" onclick="if (event.target === this) closeGraderModal()">
+    <div class="modal-card">
+      <h2>🚜 Grader Check-In</h2>
+      <div id="graderBody"></div>
+      <div class="modal-actions">
+        <button class="btn-secondary" onclick="closeGraderModal()">Close</button>
+      </div>
+    </div>
+  </div>
 
   <!-- Mileage Breakdown Modal -->
   <div id="mileageModal" class="modal-overlay" onclick="if (event.target === this) closeMileageModal()">
@@ -878,6 +914,7 @@
       }
 
       updateOperatorUI();
+      updateGraderUI();
       document.getElementById('operatorModal').style.display = 'none';
     }
 
@@ -1375,6 +1412,194 @@
       enqueue({ type: 'hazard_resolve', pinId: pinId, hadPhoto: !!(pin && pin.photo_url) || pendingIdx >= 0 });
     };
 
+    // =====================================================================
+    // GRADER CHECK-IN
+    // One grader, one active session (grader_sessions in Supabase).
+    // Check-in/out go through server functions so two people can't both
+    // be "in" the grader at once.
+    // =====================================================================
+    const GRADER_STALE_HOURS = 12; // longer than this looks like a forgotten check-out
+
+    let graderSession = null;  // the open session, or null if the grader is free
+    let graderLoaded = false;
+    let graderBusy = false;
+
+    function sameName(a, b) {
+      return String(a || '').trim().toLowerCase() === String(b || '').trim().toLowerCase();
+    }
+
+    function formatElapsed(startIso) {
+      const mins = Math.max(0, Math.floor((Date.now() - new Date(startIso)) / 60000));
+      if (mins < 60) return `${mins}m`;
+      const h = Math.floor(mins / 60), m = mins % 60;
+      if (h < 24) return `${h}h ${m}m`;
+      const d = Math.floor(h / 24);
+      return `${d}d ${h % 24}h`;
+    }
+
+    function formatStart(startIso) {
+      const d = new Date(startIso);
+      const time = d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+      const sameDay = d.toDateString() === new Date().toDateString();
+      return sameDay ? time : `${d.toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' })} ${time}`;
+    }
+
+    function isGraderStale() {
+      return graderSession && (Date.now() - new Date(graderSession.started_at)) > GRADER_STALE_HOURS * 3600000;
+    }
+
+    async function fetchGraderSession() {
+      if (!dbClient) return;
+      const { data, error } = await dbClient
+        .from('grader_sessions').select('*').is('ended_at', null).maybeSingle();
+      if (error) {
+        console.error('Could not load grader status:', error);
+        return;
+      }
+      graderSession = data || null;
+      graderLoaded = true;
+      updateGraderUI();
+    }
+
+    function updateGraderUI() {
+      const btn = document.getElementById('graderBtn');
+      if (!btn) return;
+      btn.classList.remove('grader-free', 'grader-busy', 'grader-mine', 'grader-stale');
+
+      if (!graderLoaded) {
+        btn.textContent = '🚜 Grader: checking…';
+      } else if (!graderSession) {
+        btn.classList.add('grader-free');
+        btn.textContent = '🟢 Grader available';
+      } else {
+        const mine = sameName(graderSession.operator, currentOperator);
+        btn.classList.add(isGraderStale() ? 'grader-stale' : mine ? 'grader-mine' : 'grader-busy');
+        btn.textContent = `🚜 ${mine ? 'You' : graderSession.operator} · ${formatElapsed(graderSession.started_at)}`;
+      }
+
+      if (document.getElementById('graderModal').style.display === 'flex') renderGraderModal();
+    }
+
+    function renderGraderModal() {
+      const body = document.getElementById('graderBody');
+      const me = currentOperator;
+      const meHtml = escapeHtml(me || 'you');
+      let html = '';
+
+      if (!graderLoaded) {
+        html = `<p>Checking grader status… (needs signal)</p>`;
+      } else if (!graderSession) {
+        html = `
+          <div class="grader-status free">🟢 Grader is available</div>
+          <p>Check in so everyone knows you're running it.</p>
+          <button class="cab-btn btn-green" onclick="graderCheckIn(false)">Check In as ${meHtml}</button>`;
+      } else {
+        const who = escapeHtml(graderSession.operator);
+        const since = escapeHtml(formatStart(graderSession.started_at));
+        const elapsed = escapeHtml(formatElapsed(graderSession.started_at));
+        const staleNote = isGraderStale()
+          ? `<p style="color:#fca5a5;">Checked in over ${GRADER_STALE_HOURS} hours ago — they may have forgotten to check out.</p>` : '';
+
+        if (sameName(graderSession.operator, me)) {
+          html = `
+            <div class="grader-status mine">🚜 You're in the grader</div>
+            <p>Since ${since} (${elapsed})</p>
+            ${staleNote}
+            <button class="cab-btn btn-orange" onclick="graderCheckOut()">Check Out</button>`;
+        } else {
+          html = `
+            <div class="grader-status busy">🚜 ${who} is in the grader</div>
+            <p>Since ${since} (${elapsed})</p>
+            ${staleNote}
+            <button class="cab-btn btn-orange" onclick="graderCheckIn(true)">Take Over as ${meHtml}</button>
+            <button class="cab-btn btn-gray" onclick="graderCheckOut()">End ${who}'s Session (Grader Free)</button>`;
+        }
+      }
+      body.innerHTML = html;
+    }
+
+    window.openGraderModal = function() {
+      renderGraderModal();
+      document.getElementById('graderModal').style.display = 'flex';
+      fetchGraderSession();
+    };
+    window.closeGraderModal = function() {
+      document.getElementById('graderModal').style.display = 'none';
+    };
+
+    function graderNeedsSignal() {
+      if (!dbClient || navigator.onLine === false) {
+        alert('Checking in or out needs a data connection, so everyone sees it. Try again when you have signal.');
+        return true;
+      }
+      return false;
+    }
+
+    window.graderCheckIn = async function(takeOver) {
+      if (graderBusy) return;
+      if (!currentOperator) {
+        closeGraderModal();
+        openOperatorModal();
+        return;
+      }
+      if (graderNeedsSignal()) return;
+      if (takeOver && graderSession &&
+          !confirm(`Take over the grader from ${graderSession.operator}?\n\nTheir session will be ended and you'll be checked in.`)) {
+        return;
+      }
+
+      graderBusy = true;
+      try {
+        const { data, error } = await dbClient.rpc('grader_check_in', {
+          p_operator: currentOperator,
+          p_take_over: !!takeOver
+        });
+        if (error) {
+          const m = /grader_in_use:(.*)/.exec(error.message || '');
+          if (m) {
+            alert(`${m[1].trim()} just checked into the grader.`);
+          } else {
+            alert('Could not check in: ' + (error.message || 'unknown error'));
+          }
+          await fetchGraderSession();
+          return;
+        }
+        graderSession = data;
+        graderLoaded = true;
+        updateGraderUI();
+        closeGraderModal();
+      } finally {
+        graderBusy = false;
+      }
+    };
+
+    window.graderCheckOut = async function() {
+      if (graderBusy || !graderSession) return;
+      if (graderNeedsSignal()) return;
+      const mine = sameName(graderSession.operator, currentOperator);
+      if (!mine && !confirm(`End ${graderSession.operator}'s grader session and mark the grader available?`)) return;
+
+      graderBusy = true;
+      try {
+        const { error } = await dbClient.rpc('grader_check_out', { p_by: currentOperator || null });
+        if (error) {
+          alert('Could not check out: ' + (error.message || 'unknown error'));
+          await fetchGraderSession();
+          return;
+        }
+        graderSession = null;
+        graderLoaded = true;
+        updateGraderUI();
+        closeGraderModal();
+      } finally {
+        graderBusy = false;
+      }
+    };
+
+    // Keep the elapsed time ticking
+    setInterval(() => updateGraderUI(), 60000);
+    fetchGraderSession();
+
     // --- INSTANT REALTIME WEBSOCKET SYNC ---
     if (dbClient) {
       dbClient
@@ -1412,6 +1637,11 @@
             if (payload.new && payload.new.id === 'cycle_config') applySettingsRow(payload.new);
           }
         )
+        .on(
+          'postgres_changes',
+          { event: '*', schema: 'public', table: 'grader_sessions' },
+          () => fetchGraderSession()
+        )
         .subscribe(status => {
           // After a dropped connection, catch up on anything we missed
           if (status === 'SUBSCRIBED' && Object.keys(roadLayers).length > 0) {
@@ -1425,6 +1655,7 @@
       await fetchStatuses();
       await fetchHazards();
       overlayPendingChanges();
+      await fetchGraderSession();
     }
 
     // --- LOAD ROADS ---
