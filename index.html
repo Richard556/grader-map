@@ -349,6 +349,406 @@
       bottom: 68px;
     }
 
+    /* ================= ADMIN PANEL ================= */
+    .admin-overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      z-index: 3500;
+      background: rgba(2, 6, 23, 0.6);
+      backdrop-filter: blur(2px);
+      justify-content: flex-end;
+    }
+    .admin-sheet {
+      width: 100%;
+      max-width: 540px;
+      height: 100%;
+      background: #0f172a;
+      color: #e2e8f0;
+      display: flex;
+      flex-direction: column;
+      border-left: 1px solid #1e293b;
+      box-shadow: -12px 0 40px rgba(0, 0, 0, 0.5);
+    }
+    .admin-header {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      padding: 18px 20px 14px;
+      border-bottom: 1px solid #1e293b;
+    }
+    .admin-eyebrow {
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: #64748b;
+    }
+    .admin-header h2 {
+      margin: 2px 0 0;
+      font-size: 22px;
+      font-weight: 800;
+      color: #f8fafc;
+    }
+    .admin-header-actions {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+    }
+    .admin-close, .admin-ghost {
+      background: transparent;
+      border: 1px solid #334155;
+      color: #cbd5e1;
+      border-radius: 8px;
+      height: 36px;
+      min-width: 36px;
+      padding: 0 12px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    .admin-close:hover, .admin-ghost:hover { background: #1e293b; }
+
+    .admin-lock {
+      padding: 48px 28px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      text-align: center;
+      gap: 10px;
+    }
+    .admin-lock-badge {
+      width: 64px;
+      height: 64px;
+      border-radius: 50%;
+      background: #1e293b;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 28px;
+    }
+    .admin-lock h3 { margin: 6px 0 0; font-size: 18px; color: #f8fafc; }
+    .admin-lock p { margin: 0; color: #94a3b8; font-size: 14px; }
+    .admin-lock input {
+      width: 100%;
+      max-width: 260px;
+      text-align: center;
+      font-size: 22px;
+      letter-spacing: 0.3em;
+      margin-top: 8px;
+    }
+    .admin-sheet input[type="password"],
+    .admin-sheet input[type="number"],
+    .admin-sheet input[type="date"],
+    .admin-sheet input[type="text"],
+    .admin-sheet select {
+      width: 100%;
+      box-sizing: border-box;
+      padding: 11px 12px;
+      border-radius: 8px;
+      border: 1px solid #334155;
+      background: #020617;
+      color: #f8fafc;
+      font-size: 15px;
+    }
+    .admin-sheet input:focus, .admin-sheet select:focus {
+      outline: none;
+      border-color: #3b82f6;
+      box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.25);
+    }
+
+    .admin-body {
+      display: flex;
+      flex-direction: column;
+      flex: 1;
+      min-height: 0;
+      position: relative;
+    }
+    .admin-body[hidden], .admin-lock[hidden] { display: none; }
+    .admin-tabs {
+      display: flex;
+      gap: 4px;
+      padding: 0 12px;
+      border-bottom: 1px solid #1e293b;
+      overflow-x: auto;
+      scrollbar-width: none;
+    }
+    .admin-tabs button {
+      background: none;
+      border: none;
+      border-bottom: 2px solid transparent;
+      color: #94a3b8;
+      padding: 12px 10px;
+      font-size: 14px;
+      font-weight: 700;
+      white-space: nowrap;
+      cursor: pointer;
+    }
+    .admin-tabs button.active {
+      color: #f8fafc;
+      border-bottom-color: #3b82f6;
+    }
+    .admin-scroll {
+      flex: 1;
+      overflow-y: auto;
+      padding: 16px 16px 90px;
+    }
+    .admin-card {
+      background: #111c33;
+      border: 1px solid #1e293b;
+      border-radius: 12px;
+      padding: 16px;
+      margin-bottom: 14px;
+    }
+    .admin-card.subtle { background: transparent; }
+    .admin-card h3 {
+      margin: 0 0 4px;
+      font-size: 16px;
+      font-weight: 800;
+      color: #f8fafc;
+    }
+    .admin-help {
+      margin: 0 0 12px;
+      font-size: 13px;
+      line-height: 1.45;
+      color: #94a3b8;
+    }
+    .admin-label {
+      display: block;
+      font-size: 12px;
+      font-weight: 700;
+      color: #94a3b8;
+      margin: 12px 0 6px;
+    }
+    .admin-row2 {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+    }
+    .admin-actions {
+      display: flex;
+      justify-content: flex-end;
+      gap: 10px;
+      margin-top: 16px;
+    }
+    .admin-btn {
+      border-radius: 8px;
+      border: 1px solid #334155;
+      background: #1e293b;
+      color: #e2e8f0;
+      padding: 11px 16px;
+      font-size: 14px;
+      font-weight: 700;
+      cursor: pointer;
+    }
+    .admin-btn.wide { width: 100%; max-width: 260px; }
+    .admin-btn.primary { background: #2563eb; border-color: #2563eb; color: #fff; }
+    .admin-btn.danger { background: transparent; border-color: #dc2626; color: #fca5a5; }
+    .admin-btn.danger:not(:disabled):hover { background: #dc2626; color: #fff; }
+    .admin-btn:disabled { opacity: 0.45; cursor: not-allowed; }
+    .admin-msg { min-height: 18px; color: #fca5a5 !important; font-weight: 600; }
+
+    .admin-preview {
+      margin-top: 12px;
+      font-size: 14px;
+      color: #e2e8f0;
+      min-height: 0;
+    }
+    .admin-preview:empty { display: none; }
+    .admin-preview .count {
+      font-weight: 800;
+      color: #fbbf24;
+    }
+
+    .cycle-preview {
+      display: flex;
+      margin-top: 14px;
+      border-radius: 8px;
+      overflow: hidden;
+      font-size: 12px;
+      font-weight: 700;
+    }
+    .cycle-preview div {
+      padding: 8px 10px;
+      color: #0f172a;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .admin-stats {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 10px;
+      margin-bottom: 14px;
+    }
+    .admin-stat {
+      background: #111c33;
+      border: 1px solid #1e293b;
+      border-radius: 12px;
+      padding: 12px;
+    }
+    .admin-stat .num {
+      font-size: 22px;
+      font-weight: 800;
+      color: #f8fafc;
+      font-variant-numeric: tabular-nums;
+    }
+    .admin-stat .lbl {
+      font-size: 12px;
+      color: #94a3b8;
+    }
+
+    .admin-list { display: flex; flex-direction: column; }
+    .admin-list-empty { font-size: 13px; color: #64748b; padding: 6px 0; }
+    .admin-item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 10px 0;
+      border-top: 1px solid #1e293b;
+      font-size: 14px;
+    }
+    .admin-item:first-child { border-top: none; }
+    .admin-item input[type="checkbox"] { width: 20px; height: 20px; flex-shrink: 0; }
+    .admin-item .main { flex: 1; min-width: 0; }
+    .admin-item .sub {
+      font-size: 12px;
+      color: #94a3b8;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .admin-item .remove {
+      background: none;
+      border: 1px solid #334155;
+      color: #fca5a5;
+      border-radius: 6px;
+      padding: 6px 10px;
+      font-weight: 700;
+      cursor: pointer;
+    }
+
+    .admin-radio {
+      display: flex;
+      gap: 10px;
+      align-items: flex-start;
+      padding: 10px 12px;
+      border: 1px solid #1e293b;
+      border-radius: 10px;
+      margin-top: 8px;
+      cursor: pointer;
+      font-size: 14px;
+    }
+    .admin-radio small { color: #94a3b8; }
+    .admin-radio input { margin-top: 3px; width: 18px; height: 18px; }
+    .admin-sheet input[type="range"] { width: 100%; accent-color: #3b82f6; }
+
+    .admin-toast {
+      position: absolute;
+      left: 16px;
+      right: 16px;
+      bottom: 16px;
+      padding: 12px 14px;
+      border-radius: 10px;
+      background: #14532d;
+      border: 1px solid #16a34a;
+      color: #dcfce7;
+      font-size: 14px;
+      font-weight: 600;
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+    }
+    .admin-toast.error { background: #450a0a; border-color: #dc2626; color: #fee2e2; }
+
+    @media (max-width: 560px) {
+      .admin-sheet { max-width: none; border-left: none; }
+      .admin-stats { grid-template-columns: repeat(3, 1fr); }
+      .admin-stat .num { font-size: 18px; }
+    }
+
+    /* ================= AUTO-BLADE ================= */
+    .fab-auto {
+      font-size: 11px;
+      font-weight: 900;
+      letter-spacing: 0.04em;
+      color: #86efac;
+      border-color: #16a34a;
+    }
+    .fab-auto.on {
+      background: #16a34a;
+      color: #fff;
+      box-shadow: 0 0 0 4px rgba(22, 163, 74, 0.35), 0 4px 12px rgba(0,0,0,0.4);
+    }
+    .ab-chip {
+      position: absolute;
+      left: 50%;
+      transform: translateX(-50%);
+      bottom: 118px;
+      z-index: 1000;
+      background: rgba(20, 83, 45, 0.95);
+      border: 1px solid #16a34a;
+      color: #dcfce7;
+      padding: 7px 14px;
+      border-radius: 20px;
+      font-size: 12px;
+      font-weight: 800;
+      letter-spacing: 0.02em;
+      white-space: nowrap;
+      max-width: calc(100vw - 32px);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+      pointer-events: none;
+    }
+    .ab-chip[hidden], .ab-toast[hidden], .map-toast[hidden] { display: none; }
+    .ab-toast {
+      position: absolute;
+      left: 50%;
+      transform: translateX(-50%);
+      bottom: 160px;
+      z-index: 2500;
+      width: min(440px, calc(100vw - 28px));
+      box-sizing: border-box;
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 10px;
+      padding: 12px 14px;
+      background: #0f172a;
+      border: 1px solid #16a34a;
+      border-radius: 12px;
+      color: #f1f5f9;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.6);
+    }
+    .ab-toast-text { flex: 1 1 200px; font-size: 15px; }
+    .ab-toast-btn {
+      background: #1e293b;
+      border: 1px solid #475569;
+      color: #f8fafc;
+      border-radius: 8px;
+      padding: 12px 16px;
+      font-size: 15px;
+      font-weight: 800;
+      cursor: pointer;
+    }
+    .ab-toast-btn.primary { background: #16a34a; border-color: #16a34a; }
+    .map-toast {
+      position: absolute;
+      top: 70px;
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 2500;
+      background: rgba(15, 23, 42, 0.95);
+      border: 1px solid #475569;
+      color: #f8fafc;
+      padding: 9px 16px;
+      border-radius: 20px;
+      font-size: 13px;
+      font-weight: 700;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+      white-space: nowrap;
+    }
+
     /* Modal Overlays */
     .modal-overlay {
       display: none;
@@ -458,10 +858,229 @@
   <div class="fab-dock">
     <button id="gpsToggle" class="fab-btn" onclick="toggleGPS()" title="Find My Location">📍</button>
     <button id="hazardReportBtn" class="fab-btn fab-hazard" onclick="startHazardReport()" title="Report Culvert/Washout Hazard">⚠️</button>
+    <button id="autoBladeBtn" class="fab-btn fab-auto" onclick="toggleAutoBlade()" title="GPS auto-blade on/off">AUTO</button>
   </div>
 
   <button class="admin-menu-btn reports-btn" onclick="openReportsModal()">📄 Reports</button>
-  <button class="admin-menu-btn" onclick="openSettingsModal()">⚙️ Cycle & Reset Settings</button>
+  <button class="admin-menu-btn" onclick="openAdminPanel()">⚙️ Admin</button>
+
+  <div id="abChip" class="ab-chip" hidden></div>
+  <div id="abToast" class="ab-toast" hidden></div>
+  <div id="mapToast" class="map-toast" hidden></div>
+
+  <!-- Admin Panel -->
+  <div id="adminPanel" class="admin-overlay" onclick="if (event.target === this) closeAdminPanel()">
+    <div class="admin-sheet" role="dialog" aria-modal="true" aria-labelledby="adminTitle">
+      <header class="admin-header">
+        <div>
+          <div class="admin-eyebrow">Sverdrup Township · Road Tracker</div>
+          <h2 id="adminTitle">Administration</h2>
+        </div>
+        <div class="admin-header-actions">
+          <button id="adminLockBtn" class="admin-ghost" onclick="lockAdmin()" hidden>Lock</button>
+          <button class="admin-close" onclick="closeAdminPanel()" aria-label="Close">✕</button>
+        </div>
+      </header>
+
+      <!-- Lock screen -->
+      <div id="adminLock" class="admin-lock">
+        <div class="admin-lock-badge">🔒</div>
+        <h3>Admin access</h3>
+        <p>Enter the township admin PIN.</p>
+        <input type="password" inputmode="numeric" id="adminPinInput" autocomplete="off"
+               placeholder="PIN" onkeydown="if (event.key === 'Enter') adminUnlock()" />
+        <button class="admin-btn primary wide" id="adminUnlockBtn" onclick="adminUnlock()">Unlock</button>
+        <p id="adminLockMsg" class="admin-msg"></p>
+      </div>
+
+      <!-- Unlocked -->
+      <div id="adminBody" class="admin-body" hidden>
+        <nav class="admin-tabs" role="tablist">
+          <button role="tab" data-tab="cycle" onclick="showAdminTab('cycle')">Cycle</button>
+          <button role="tab" data-tab="roads" onclick="showAdminTab('roads')">Roads</button>
+          <button role="tab" data-tab="data" onclick="showAdminTab('data')">Data</button>
+          <button role="tab" data-tab="autoblade" onclick="showAdminTab('autoblade')">Auto-Blade</button>
+          <button role="tab" data-tab="security" onclick="showAdminTab('security')">Security</button>
+        </nav>
+
+        <div class="admin-scroll">
+          <!-- CYCLE -->
+          <section class="admin-tab" data-tab="cycle">
+            <div class="admin-card">
+              <h3>Grading cycle</h3>
+              <p class="admin-help">How long a graded road stays green, then yellow, before it shows as overdue.</p>
+              <label class="admin-label" for="admCyclePreset">Preset</label>
+              <select id="admCyclePreset" onchange="adminCyclePreset(this.value)">
+                <option value="monthly">Monthly — 21 days green, 30 days yellow</option>
+                <option value="quick">Spring / heavy rain — 7 days green, 14 days yellow</option>
+                <option value="custom">Custom</option>
+              </select>
+              <div class="admin-row2">
+                <div>
+                  <label class="admin-label" for="admGreen">Green through day</label>
+                  <input type="number" id="admGreen" min="1" max="364" oninput="adminCycleChanged()" />
+                </div>
+                <div>
+                  <label class="admin-label" for="admYellow">Yellow through day</label>
+                  <input type="number" id="admYellow" min="2" max="365" oninput="adminCycleChanged()" />
+                </div>
+              </div>
+              <div class="cycle-preview" id="admCyclePreview"></div>
+              <div class="admin-actions">
+                <button class="admin-btn primary" onclick="adminSaveCycle()">Save cycle</button>
+              </div>
+            </div>
+          </section>
+
+          <!-- ROADS -->
+          <section class="admin-tab" data-tab="roads" hidden>
+            <div class="admin-card">
+              <h3>Reset roads to untouched</h3>
+              <p class="admin-help">Turns roads back to dashed gray to start a new cycle. Town streets are never touched. Every reset is recorded in the history.</p>
+              <label class="admin-label" for="admResetType">Which roads</label>
+              <select id="admResetType" onchange="adminResetPreview()">
+                <option value="older_than_yellow">Only overdue roads (older than the yellow limit)</option>
+                <option value="older_than_green">Roads older than the green limit</option>
+                <option value="all">All township roads</option>
+              </select>
+              <div class="admin-preview" id="admResetPreview"></div>
+              <div class="admin-actions">
+                <button class="admin-btn danger" onclick="adminResetRoads()">Reset roads</button>
+              </div>
+            </div>
+          </section>
+
+          <!-- DATA -->
+          <section class="admin-tab" data-tab="data" hidden>
+            <div class="admin-stats" id="admStats"></div>
+
+            <div class="admin-card">
+              <h3>Delete road history</h3>
+              <p class="admin-help">Removes entries from the change history (and from reports). Road colors on the map don't change.</p>
+              <div class="admin-row2">
+                <div>
+                  <label class="admin-label" for="admHistOp">Driver</label>
+                  <select id="admHistOp" onchange="adminClearPreview('hist')"></select>
+                </div>
+                <div></div>
+              </div>
+              <div class="admin-row2">
+                <div>
+                  <label class="admin-label" for="admHistFrom">From</label>
+                  <input type="date" id="admHistFrom" onchange="adminClearPreview('hist')" />
+                </div>
+                <div>
+                  <label class="admin-label" for="admHistTo">To</label>
+                  <input type="date" id="admHistTo" onchange="adminClearPreview('hist')" />
+                </div>
+              </div>
+              <div class="admin-preview" id="admHistPreview"></div>
+              <div class="admin-actions">
+                <button class="admin-btn" onclick="adminPreviewDelete('hist')">Preview</button>
+                <button class="admin-btn danger" id="admHistDelete" onclick="adminDelete('hist')" disabled>Delete</button>
+              </div>
+            </div>
+
+            <div class="admin-card">
+              <h3>Delete grader sessions</h3>
+              <p class="admin-help">Removes finished check-in sessions. Whoever is in the grader right now is never affected.</p>
+              <div class="admin-row2">
+                <div>
+                  <label class="admin-label" for="admSessOp">Driver</label>
+                  <select id="admSessOp" onchange="adminClearPreview('sess')"></select>
+                </div>
+                <div></div>
+              </div>
+              <div class="admin-row2">
+                <div>
+                  <label class="admin-label" for="admSessFrom">From</label>
+                  <input type="date" id="admSessFrom" onchange="adminClearPreview('sess')" />
+                </div>
+                <div>
+                  <label class="admin-label" for="admSessTo">To</label>
+                  <input type="date" id="admSessTo" onchange="adminClearPreview('sess')" />
+                </div>
+              </div>
+              <div class="admin-preview" id="admSessPreview"></div>
+              <div class="admin-actions">
+                <button class="admin-btn" onclick="adminPreviewDelete('sess')">Preview</button>
+                <button class="admin-btn danger" id="admSessDelete" onclick="adminDelete('sess')" disabled>Delete</button>
+              </div>
+            </div>
+
+            <div class="admin-card">
+              <h3>Hazard pins</h3>
+              <p class="admin-help">Select pins to remove from every device, along with their photos.</p>
+              <div id="admHazardList" class="admin-list"></div>
+              <div class="admin-actions">
+                <button class="admin-btn danger" id="admHazardDelete" onclick="adminDeleteHazards()" disabled>Delete selected</button>
+              </div>
+            </div>
+
+            <div class="admin-card">
+              <h3>Driver names on this device</h3>
+              <p class="admin-help">The quick-pick list in the driver sign-in. Removing a name here doesn't touch any history.</p>
+              <div id="admDriverList" class="admin-list"></div>
+            </div>
+          </section>
+
+          <!-- AUTO-BLADE -->
+          <section class="admin-tab" data-tab="autoblade" hidden>
+            <div class="admin-card">
+              <h3>GPS auto-blade</h3>
+              <p class="admin-help">When an operator turns auto-blade on, roads are tracked as the grader covers them at blading speed. These settings apply to every device.</p>
+              <div class="admin-row2">
+                <div>
+                  <label class="admin-label" for="admAbMin">Slowest blading speed (mph)</label>
+                  <input type="number" id="admAbMin" min="0" max="59" step="0.5" />
+                </div>
+                <div>
+                  <label class="admin-label" for="admAbMax">Fastest blading speed (mph)</label>
+                  <input type="number" id="admAbMax" min="1" max="60" step="0.5" />
+                </div>
+              </div>
+              <label class="admin-label" for="admAbCoverage">Covered to count as graded: <strong id="admAbCoverageVal"></strong></label>
+              <input type="range" id="admAbCoverage" min="50" max="100" step="5"
+                     oninput="document.getElementById('admAbCoverageVal').textContent = this.value + '%'" />
+              <div class="admin-label" style="margin-top:14px;">When a road is covered</div>
+              <label class="admin-radio">
+                <input type="radio" name="admAbMode" value="auto" />
+                <span><strong>Mark it graded automatically</strong><br><small>With an Undo button for a few seconds.</small></span>
+              </label>
+              <label class="admin-radio">
+                <input type="radio" name="admAbMode" value="confirm" />
+                <span><strong>Ask the operator first</strong><br><small>Shows "Mark graded?" for them to tap.</small></span>
+              </label>
+              <div class="admin-actions">
+                <button class="admin-btn primary" onclick="adminSaveAutoblade()">Save auto-blade settings</button>
+              </div>
+            </div>
+          </section>
+
+          <!-- SECURITY -->
+          <section class="admin-tab" data-tab="security" hidden>
+            <div class="admin-card">
+              <h3>Change admin PIN</h3>
+              <p class="admin-help">4–20 characters. Takes effect on every device right away.</p>
+              <label class="admin-label" for="admNewPin">New PIN</label>
+              <input type="password" id="admNewPin" autocomplete="new-password" />
+              <label class="admin-label" for="admNewPin2">Repeat new PIN</label>
+              <input type="password" id="admNewPin2" autocomplete="new-password" />
+              <div class="admin-actions">
+                <button class="admin-btn primary" onclick="adminChangePin()">Change PIN</button>
+              </div>
+            </div>
+            <div class="admin-card subtle">
+              <h3>Protection</h3>
+              <p class="admin-help">The PIN is checked on the server, never stored in the app. After 5 wrong PINs in 15 minutes, admin access locks for 15 minutes.</p>
+            </div>
+          </section>
+        </div>
+
+        <div id="adminToast" class="admin-toast" hidden></div>
+      </div>
+    </div>
+  </div>
 
   <!-- Reports Modal -->
   <div id="reportsModal" class="modal-overlay" onclick="if (event.target === this) closeReportsModal()">
@@ -573,44 +1192,6 @@
     </div>
   </div>
 
-  <!-- Cycle & Admin Settings Modal -->
-  <div id="settingsModal" class="modal-overlay">
-    <div class="modal-card">
-      <h2>Cycle Aging & Reset Menu</h2>
-      
-      <label>Cycle Rule (Days until status changes)</label>
-      <select id="cyclePreset" onchange="handlePresetChange(this.value)">
-        <option value="monthly" selected>Monthly Cycle (21 days Green, 30 days Yellow)</option>
-        <option value="quick">Spring / Heavy Rain (7 days Green, 14 days Yellow)</option>
-        <option value="custom">Custom Thresholds...</option>
-      </select>
-
-      <div id="customDaysGroup" style="display:none;">
-        <label>Days Road Stays Green (&lt; span)</label>
-        <input type="number" id="inputGreenDays" value="21" min="1" max="90" />
-
-        <label>Days Road Turns Yellow (Warning)</label>
-        <input type="number" id="inputYellowDays" value="30" min="2" max="180" />
-      </div>
-
-      <hr style="border:0; border-top:1px solid #334155; margin:18px 0 10px;" />
-
-      <label>Township Cycle Reset</label>
-      <select id="resetTypeSelect">
-        <option value="all">Reset ALL Roads to Untouched (Dashed Gray)</option>
-        <option value="older_than_green">Reset only roads older than Green cycle</option>
-        <option value="older_than_yellow">Reset only roads older than Yellow cycle</option>
-      </select>
-
-      <label>Admin PIN (Required to Reset or Save)</label>
-      <input type="password" id="adminPin" placeholder="Enter admin PIN" />
-
-      <div class="modal-actions">
-        <button class="btn-secondary" onclick="closeSettingsModal()">Close</button>
-        <button class="btn-save" id="adminApplyBtn" onclick="applySettingsAndReset()">Apply / Save</button>
-      </div>
-    </div>
-  </div>
 
   <script>
     const SUPABASE_URL = 'https://wzhqsionreajfgihmdco.supabase.co';
@@ -1193,10 +1774,9 @@
       if (g > 0 && y > g) {
         greenThresholdDays = g;
         yellowThresholdDays = y;
-        document.getElementById('inputGreenDays').value = g;
-        document.getElementById('inputYellowDays').value = y;
         redrawAllRoads();
       }
+      applyAutoBladeSettings(row);
     }
 
     async function loadSettings() {
@@ -1947,6 +2527,661 @@
       }
     };
 
+    // =====================================================================
+    // GPS AUTO-BLADE
+    // Each township road is split into ~20 m checkpoints. While auto-blade
+    // is on, GPS fixes at blading speed tick off nearby checkpoints. When
+    // enough of a road is covered, it's marked graded (with Undo) or the
+    // operator is asked, depending on the admin setting.
+    // =====================================================================
+    const autoBladeCfg = { minMph: 2, maxMph: 15, coverage: 80, mode: 'auto' };
+    const AB_STEP_M = 20;        // checkpoint spacing along a road
+    const AB_RADIUS_M = 22;      // how close the grader must pass a checkpoint
+    const AB_MAX_ACCURACY_M = 30; // ignore fuzzy GPS fixes
+    const AB_MAX_GAP_M = 150;    // fill in between fixes up to this far apart
+    const AB_RECENT_HOURS = 12;  // don't re-mark a road graded within this long
+    const AB_CELL_M = 100;
+
+    let autoBladeOn = false;
+    let abIndexBuilt = false;
+    let abCheckpoints = {};      // segmentId -> [{x, y}]
+    let abCovered = {};          // segmentId -> Set of checkpoint indexes
+    let abGrid = new Map();      // "cx,cy" -> [[segmentId, idx], ...]
+    let abHandled = new Set();   // segments already marked/asked this run
+    let abLastFix = null;        // {x, y, t}
+    let abLastSpeedMph = null;
+    let abActiveSeg = null;
+    let abWakeLock = null;
+    let abPrompt = null;         // current toast {segmentId, kind, prev}
+    let abPromptQueue = [];
+    let abPromptTimer = null;
+
+    const AB_LAT0 = 43.72;
+    const AB_MX = 111320 * Math.cos(AB_LAT0 * Math.PI / 180);
+    const AB_MY = 110540;
+    function abXY(lat, lng) { return { x: lng * AB_MX, y: lat * AB_MY }; }
+
+    function applyAutoBladeSettings(row) {
+      if (!row) return;
+      const min = parseFloat(row.autoblade_min_mph);
+      const max = parseFloat(row.autoblade_max_mph);
+      const cov = parseInt(row.autoblade_coverage, 10);
+      if (min >= 0 && max > min) { autoBladeCfg.minMph = min; autoBladeCfg.maxMph = max; }
+      if (cov >= 30 && cov <= 100) autoBladeCfg.coverage = cov;
+      if (row.autoblade_mode === 'auto' || row.autoblade_mode === 'confirm') autoBladeCfg.mode = row.autoblade_mode;
+    }
+
+    function buildAutoBladeIndex(geojson) {
+      abCheckpoints = {};
+      abGrid = new Map();
+      geojson.features.forEach(f => {
+        const id = getRoadId(f.properties);
+        if (!isCounted(id)) return;
+        const lines = f.geometry.type === 'MultiLineString' ? f.geometry.coordinates : [f.geometry.coordinates];
+        const pts = [];
+        lines.forEach(line => {
+          for (let i = 0; i < line.length - 1; i++) {
+            const a = abXY(line[i][1], line[i][0]);
+            const b = abXY(line[i + 1][1], line[i + 1][0]);
+            const len = Math.hypot(b.x - a.x, b.y - a.y);
+            const n = Math.max(1, Math.ceil(len / AB_STEP_M));
+            for (let k = (pts.length ? 1 : 0); k <= n; k++) {
+              pts.push({ x: a.x + (b.x - a.x) * k / n, y: a.y + (b.y - a.y) * k / n });
+            }
+          }
+        });
+        // Thin to ~AB_STEP_M spacing so every road is measured the same way
+        const thinned = [pts[0]];
+        let acc = 0;
+        for (let i = 1; i < pts.length; i++) {
+          acc += Math.hypot(pts[i].x - pts[i - 1].x, pts[i].y - pts[i - 1].y);
+          if (acc >= AB_STEP_M || i === pts.length - 1) { thinned.push(pts[i]); acc = 0; }
+        }
+        abCheckpoints[id] = thinned;
+        thinned.forEach((p, idx) => {
+          const key = `${Math.floor(p.x / AB_CELL_M)},${Math.floor(p.y / AB_CELL_M)}`;
+          if (!abGrid.has(key)) abGrid.set(key, []);
+          abGrid.get(key).push([id, idx]);
+        });
+      });
+      abIndexBuilt = true;
+    }
+
+    function abMarkNear(p) {
+      const cx = Math.floor(p.x / AB_CELL_M), cy = Math.floor(p.y / AB_CELL_M);
+      const touched = new Set();
+      for (let dx = -1; dx <= 1; dx++) {
+        for (let dy = -1; dy <= 1; dy++) {
+          const cell = abGrid.get(`${cx + dx},${cy + dy}`);
+          if (!cell) continue;
+          cell.forEach(([id, idx]) => {
+            const c = abCheckpoints[id][idx];
+            if (Math.hypot(c.x - p.x, c.y - p.y) <= AB_RADIUS_M) {
+              if (!abCovered[id]) abCovered[id] = new Set();
+              abCovered[id].add(idx);
+              touched.add(id);
+            }
+          });
+        }
+      }
+      return touched;
+    }
+
+    function abCoverage(id) {
+      const total = (abCheckpoints[id] || []).length;
+      return total ? (abCovered[id] ? abCovered[id].size : 0) / total : 0;
+    }
+
+    function abRecentlyGraded(id) {
+      const cur = roadStatuses[id];
+      return cur && cur.status === 'graded' && cur.updated_at &&
+        (Date.now() - new Date(cur.updated_at)) < AB_RECENT_HOURS * 3600000;
+    }
+
+    // Main entry: one GPS fix. speedMps may be null (then it's computed).
+    function handleAutoBladeFix(lat, lng, speedMps, accuracyM, timeMs) {
+      if (!autoBladeOn || !abIndexBuilt) return;
+      const t = timeMs || Date.now();
+      if (accuracyM != null && accuracyM > AB_MAX_ACCURACY_M) { updateAutoBladeChip('Weak GPS signal'); return; }
+
+      const p = abXY(lat, lng);
+      let mps = (speedMps != null && speedMps >= 0) ? speedMps : null;
+      const prev = abLastFix;
+      const gap = prev ? Math.hypot(p.x - prev.x, p.y - prev.y) : 0;
+      if (mps == null && prev && t > prev.t) mps = gap / ((t - prev.t) / 1000);
+      abLastFix = { x: p.x, y: p.y, t };
+      if (mps == null) { updateAutoBladeChip(); return; }
+
+      const mph = mps * 2.23694;
+      abLastSpeedMph = mph;
+      const blading = mph >= autoBladeCfg.minMph && mph <= autoBladeCfg.maxMph;
+      if (!blading) { abActiveSeg = null; updateAutoBladeChip(); return; }
+
+      const touched = new Set();
+      // Fill in checkpoints between this fix and the last one
+      if (prev && gap > 0 && gap <= AB_MAX_GAP_M) {
+        const steps = Math.ceil(gap / 8);
+        for (let i = 1; i < steps; i++) {
+          abMarkNear({ x: prev.x + (p.x - prev.x) * i / steps, y: prev.y + (p.y - prev.y) * i / steps }).forEach(id => touched.add(id));
+        }
+      }
+      abMarkNear(p).forEach(id => touched.add(id));
+
+      // The road we're on = the touched road we've covered the most of
+      let best = null, bestCov = -1;
+      touched.forEach(id => {
+        const c = abCoverage(id);
+        if (c > bestCov) { best = id; bestCov = c; }
+      });
+      if (best) abActiveSeg = best;
+
+      touched.forEach(id => {
+        if (abHandled.has(id)) return;
+        if (abCoverage(id) * 100 >= autoBladeCfg.coverage) {
+          abHandled.add(id);
+          if (abRecentlyGraded(id)) return;
+          abSegmentDone(id);
+        }
+      });
+      updateAutoBladeChip();
+    }
+    window.__autoBladeFix = handleAutoBladeFix;
+
+    function abSegmentDone(id) {
+      if (autoBladeCfg.mode === 'confirm') {
+        abShowPrompt({ segmentId: id, kind: 'confirm' });
+        return;
+      }
+      const prev = roadStatuses[id] ? Object.assign({}, roadStatuses[id]) : null;
+      saveStatus(id, 'graded', { source: 'auto', notes: 'GPS auto-blade' });
+      abShowPrompt({ segmentId: id, kind: 'done', prev });
+    }
+
+    function roadLabel(id) {
+      return `${roadNames[id] || 'Road'} (${(roadMiles[id] || 0).toFixed(2)} mi)`;
+    }
+
+    function abShowPrompt(p) {
+      if (abPrompt) { abPromptQueue.push(p); return; }
+      abPrompt = p;
+      const el = document.getElementById('abToast');
+      const name = escapeHtml(roadLabel(p.segmentId));
+      if (p.kind === 'done') {
+        el.innerHTML = `<div class="ab-toast-text">✅ <strong>${name}</strong> marked graded</div>
+          <button class="ab-toast-btn" onclick="abUndo()">Undo</button>`;
+      } else {
+        el.innerHTML = `<div class="ab-toast-text">🛞 Covered <strong>${name}</strong>. Mark it graded?</div>
+          <button class="ab-toast-btn primary" onclick="abConfirm(true)">Mark graded</button>
+          <button class="ab-toast-btn" onclick="abConfirm(false)">Skip</button>`;
+      }
+      el.hidden = false;
+      clearTimeout(abPromptTimer);
+      abPromptTimer = setTimeout(() => abDismissPrompt(), p.kind === 'done' ? 12000 : 60000);
+    }
+
+    function abDismissPrompt() {
+      clearTimeout(abPromptTimer);
+      abPrompt = null;
+      document.getElementById('abToast').hidden = true;
+      if (abPromptQueue.length) abShowPrompt(abPromptQueue.shift());
+    }
+
+    window.abUndo = function() {
+      if (!abPrompt || abPrompt.kind !== 'done') return;
+      restoreStatus(abPrompt.segmentId, abPrompt.prev);
+      abDismissPrompt();
+    };
+
+    window.abConfirm = function(yes) {
+      if (!abPrompt) return;
+      if (yes) saveStatus(abPrompt.segmentId, 'graded', { source: 'auto', notes: 'GPS auto-blade (confirmed)' });
+      abDismissPrompt();
+    };
+
+    function updateAutoBladeChip(note) {
+      const chip = document.getElementById('abChip');
+      if (!autoBladeOn) { chip.hidden = true; return; }
+      chip.hidden = false;
+      const speed = abLastSpeedMph != null ? `${abLastSpeedMph.toFixed(0)} mph` : 'waiting for GPS';
+      let text = `AUTO-BLADE · ${speed}`;
+      if (note) {
+        text = `AUTO-BLADE · ${note}`;
+      } else if (abLastSpeedMph != null && (abLastSpeedMph < autoBladeCfg.minMph || abLastSpeedMph > autoBladeCfg.maxMph)) {
+        text += ' · not blading';
+      } else if (abActiveSeg) {
+        text += ` · ${roadNames[abActiveSeg] || 'Road'} ${Math.round(abCoverage(abActiveSeg) * 100)}%`;
+      }
+      chip.textContent = text;
+    }
+
+    async function abRequestWakeLock() {
+      try {
+        if ('wakeLock' in navigator && document.visibilityState === 'visible' && autoBladeOn) {
+          abWakeLock = await navigator.wakeLock.request('screen');
+        }
+      } catch (e) { /* not supported or refused — GPS still works while the screen is on */ }
+    }
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible' && autoBladeOn) abRequestWakeLock();
+    });
+
+    function setAutoBlade(on, opts) {
+      autoBladeOn = on;
+      try { localStorage.setItem('sverdrup_autoblade', on ? '1' : '0'); } catch (e) {}
+      document.getElementById('autoBladeBtn').classList.toggle('on', on);
+      if (on) {
+        abCovered = {};
+        abHandled = new Set();
+        abLastFix = null;
+        abLastSpeedMph = null;
+        abActiveSeg = null;
+        if (watchId === null) toggleGPS();
+        abRequestWakeLock();
+      } else {
+        if (abWakeLock) { abWakeLock.release().catch(() => {}); abWakeLock = null; }
+        abPromptQueue = [];
+        if (abPrompt && abPrompt.kind === 'confirm') abDismissPrompt();
+      }
+      updateAutoBladeChip();
+      if (!(opts && opts.quiet)) {
+        showMapToast(on ? 'Auto-blade ON — roads you grade will be tracked.' : 'Auto-blade OFF');
+      }
+    }
+
+    window.toggleAutoBlade = function() {
+      if (autoBladeOn) { setAutoBlade(false); return; }
+      if (!currentOperator) { openOperatorModal(); return; }
+      if (!navigator.geolocation) { alert('GPS is not supported on this device.'); return; }
+      setAutoBlade(true);
+      // Nudge: check into the grader if nobody is in it
+      if (graderLoaded && !graderSession && navigator.onLine !== false &&
+          confirm(`Check into the grader as ${currentOperator} too?`)) {
+        graderCheckIn(false);
+      }
+    };
+
+    let mapToastTimer = null;
+    function showMapToast(msg) {
+      const el = document.getElementById('mapToast');
+      el.textContent = msg;
+      el.hidden = false;
+      clearTimeout(mapToastTimer);
+      mapToastTimer = setTimeout(() => { el.hidden = true; }, 3000);
+    }
+
+    // =====================================================================
+    // ADMIN PANEL
+    // Every action is checked against the PIN on the server. The PIN is
+    // held in memory only while the panel is open and unlocked.
+    // =====================================================================
+    let adminPin = null;
+    let adminStatsCache = null;
+    let adminToastTimer = null;
+    const adminPreviewState = { hist: null, sess: null };
+
+    const ADMIN_ERRORS = {
+      invalid_pin: 'Incorrect PIN.',
+      locked: 'Too many wrong PINs. Admin is locked for 15 minutes.',
+      invalid_thresholds: 'Yellow must be more days than green (green at least 1, yellow at most 365).',
+      invalid_settings: 'Check the numbers: fastest must be more than slowest, coverage 30–100%.',
+      invalid_new_pin: 'The new PIN must be 4–20 characters.'
+    };
+
+    function adminToast(msg, isError) {
+      const t = document.getElementById('adminToast');
+      t.textContent = msg;
+      t.classList.toggle('error', !!isError);
+      t.hidden = false;
+      clearTimeout(adminToastTimer);
+      adminToastTimer = setTimeout(() => { t.hidden = true; }, isError ? 6000 : 3500);
+    }
+
+    // Calls an admin_* function; returns the JSON result or null after showing the error
+    async function adminCall(fn, args) {
+      if (!dbClient || navigator.onLine === false) {
+        adminToast('Admin changes need a data connection.', true);
+        return null;
+      }
+      const { data, error } = await dbClient.rpc(fn, Object.assign({ p_pin: adminPin }, args || {}));
+      if (error) {
+        adminToast('Server error: ' + (error.message || 'unknown'), true);
+        return null;
+      }
+      if (!data || !data.ok) {
+        const code = data && data.error;
+        if (code === 'invalid_pin' || code === 'locked') {
+          lockAdmin(ADMIN_ERRORS[code]);
+        } else {
+          adminToast(ADMIN_ERRORS[code] || ('Not saved: ' + (code || 'unknown error')), true);
+        }
+        return null;
+      }
+      return data;
+    }
+
+    window.openAdminPanel = function() {
+      document.getElementById('adminPanel').style.display = 'flex';
+      if (!adminPin) {
+        document.getElementById('adminLockMsg').textContent = '';
+        setTimeout(() => document.getElementById('adminPinInput').focus(), 50);
+      }
+    };
+
+    window.closeAdminPanel = function() {
+      document.getElementById('adminPanel').style.display = 'none';
+      lockAdmin();
+    };
+
+    window.lockAdmin = function(message) {
+      adminPin = null;
+      adminStatsCache = null;
+      document.getElementById('adminPinInput').value = '';
+      document.getElementById('adminLock').hidden = false;
+      document.getElementById('adminBody').hidden = true;
+      document.getElementById('adminLockBtn').hidden = true;
+      document.getElementById('adminLockMsg').textContent = message || '';
+    };
+
+    window.adminUnlock = async function() {
+      const input = document.getElementById('adminPinInput');
+      const msg = document.getElementById('adminLockMsg');
+      const btn = document.getElementById('adminUnlockBtn');
+      if (!input.value) { msg.textContent = 'Enter the PIN.'; return; }
+      if (!dbClient || navigator.onLine === false) { msg.textContent = 'Admin needs a data connection.'; return; }
+
+      btn.disabled = true;
+      btn.textContent = 'Checking…';
+      try {
+        const { data, error } = await dbClient.rpc('admin_verify', { p_pin: input.value });
+        if (error) { msg.textContent = 'Server error: ' + (error.message || 'unknown'); return; }
+        if (!data || !data.ok) { msg.textContent = ADMIN_ERRORS[data && data.error] || 'Incorrect PIN.'; input.select(); return; }
+        adminPin = input.value;
+        input.value = '';
+        document.getElementById('adminLock').hidden = true;
+        document.getElementById('adminBody').hidden = false;
+        document.getElementById('adminLockBtn').hidden = false;
+        fillAdminForms();
+        showAdminTab('cycle');
+      } finally {
+        btn.disabled = false;
+        btn.textContent = 'Unlock';
+      }
+    };
+
+    window.showAdminTab = function(tab) {
+      document.querySelectorAll('.admin-tabs button').forEach(b => b.classList.toggle('active', b.dataset.tab === tab));
+      document.querySelectorAll('.admin-tab').forEach(s => { s.hidden = s.dataset.tab !== tab; });
+      document.querySelector('.admin-scroll').scrollTop = 0;
+      if (tab === 'roads') adminResetPreview();
+      if (tab === 'data') loadAdminData();
+    };
+
+    function fillAdminForms() {
+      document.getElementById('admGreen').value = greenThresholdDays;
+      document.getElementById('admYellow').value = yellowThresholdDays;
+      const preset = greenThresholdDays === 21 && yellowThresholdDays === 30 ? 'monthly'
+        : greenThresholdDays === 7 && yellowThresholdDays === 14 ? 'quick' : 'custom';
+      document.getElementById('admCyclePreset').value = preset;
+      adminCycleChanged(true);
+
+      document.getElementById('admAbMin').value = autoBladeCfg.minMph;
+      document.getElementById('admAbMax').value = autoBladeCfg.maxMph;
+      document.getElementById('admAbCoverage').value = autoBladeCfg.coverage;
+      document.getElementById('admAbCoverageVal').textContent = autoBladeCfg.coverage + '%';
+      document.querySelectorAll('input[name="admAbMode"]').forEach(r => { r.checked = r.value === autoBladeCfg.mode; });
+
+      const now = new Date();
+      ['admHistFrom', 'admSessFrom'].forEach(id => { document.getElementById(id).value = ymd(new Date(now.getFullYear(), now.getMonth(), 1)); });
+      ['admHistTo', 'admSessTo'].forEach(id => { document.getElementById(id).value = ymd(now); });
+      adminClearPreview('hist');
+      adminClearPreview('sess');
+    }
+
+    // --- Cycle ---
+    window.adminCyclePreset = function(val) {
+      if (val === 'monthly') { document.getElementById('admGreen').value = 21; document.getElementById('admYellow').value = 30; }
+      if (val === 'quick') { document.getElementById('admGreen').value = 7; document.getElementById('admYellow').value = 14; }
+      adminCycleChanged(true);
+    };
+
+    window.adminCycleChanged = function(fromPreset) {
+      const g = parseInt(document.getElementById('admGreen').value, 10);
+      const y = parseInt(document.getElementById('admYellow').value, 10);
+      if (!fromPreset) document.getElementById('admCyclePreset').value = 'custom';
+      const el = document.getElementById('admCyclePreview');
+      if (!(g >= 1) || !(y > g)) {
+        el.innerHTML = '<div style="background:#334155;color:#fca5a5;flex:1;">Yellow must be more days than green</div>';
+        return;
+      }
+      const total = y + Math.max(7, Math.round(y * 0.3));
+      el.innerHTML =
+        `<div style="background:#16a34a;flex:${g};">Green 0–${g}d</div>` +
+        `<div style="background:#eab308;flex:${y - g};">Yellow ${g + 1}–${y}d</div>` +
+        `<div style="background:#b91c1c;color:#fee2e2;flex:${total - y};">Overdue</div>`;
+    };
+
+    window.adminSaveCycle = async function() {
+      const g = parseInt(document.getElementById('admGreen').value, 10);
+      const y = parseInt(document.getElementById('admYellow').value, 10);
+      const res = await adminCall('admin_save_cycle', { p_green: g, p_yellow: y });
+      if (!res) return;
+      greenThresholdDays = g;
+      yellowThresholdDays = y;
+      redrawAllRoads();
+      adminToast(`Cycle saved: green through day ${g}, yellow through day ${y}.`);
+    };
+
+    // --- Roads ---
+    function adminResetIds() {
+      const type = document.getElementById('admResetType').value;
+      const now = Date.now();
+      return Object.keys(roadLayers).filter(id => {
+        if (isTownStreet(id)) return false;
+        if (type === 'all') return true;
+        const cur = roadStatuses[id];
+        if (!cur || !cur.updated_at) return false;
+        const days = (now - new Date(cur.updated_at)) / 86400000;
+        return type === 'older_than_green' ? days > greenThresholdDays : days > yellowThresholdDays;
+      });
+    }
+
+    window.adminResetPreview = function() {
+      const ids = adminResetIds();
+      const miles = ids.reduce((t, id) => t + (roadMiles[id] || 0), 0);
+      document.getElementById('admResetPreview').innerHTML = ids.length
+        ? `This will reset <span class="count">${ids.length} segment${ids.length === 1 ? '' : 's'}</span> (${miles.toFixed(1)} mi).`
+        : 'No roads match — nothing to reset.';
+    };
+
+    window.adminResetRoads = async function() {
+      const ids = adminResetIds();
+      if (!ids.length) { adminToast('No roads match — nothing to reset.', true); return; }
+      if (!confirm(`Reset ${ids.length} road segment(s) to untouched?\n\nThis is recorded in the history.`)) return;
+      const res = await adminCall('admin_reset_roads', { p_ids: ids, p_by: currentOperator || null });
+      if (!res) return;
+      ids.forEach(id => {
+        roadStatuses[id] = { segment_id: id, status: 'untouched', updated_at: null, updated_by: null, notes: '' };
+      });
+      redrawAllRoads();
+      adminResetPreview();
+      adminToast(`${ids.length} segment(s) reset to untouched.`);
+    };
+
+    // --- Data ---
+    async function loadAdminData() {
+      const stats = await adminCall('admin_stats');
+      if (!stats) return;
+      adminStatsCache = stats;
+      document.getElementById('admStats').innerHTML = [
+        [stats.history_total, 'History entries'],
+        [stats.sessions_total, 'Grader sessions'],
+        [stats.hazards_total, 'Hazard pins']
+      ].map(([n, l]) => `<div class="admin-stat"><div class="num">${Number(n) || 0}</div><div class="lbl">${l}</div></div>`).join('');
+
+      const ops = stats.operators || [];
+      const fill = (selId, key) => {
+        const sel = document.getElementById(selId);
+        const keep = sel.value;
+        sel.innerHTML = '<option value="">All drivers</option>' + ops
+          .filter(o => o[key] > 0)
+          .map(o => `<option value="${escapeHtml(o.name)}">${escapeHtml(o.name)} (${o[key]})</option>`).join('');
+        if ([...sel.options].some(o => o.value === keep)) sel.value = keep;
+      };
+      fill('admHistOp', 'history');
+      fill('admSessOp', 'sessions');
+      renderAdminHazards();
+      renderAdminDrivers();
+    }
+
+    function adminRange(kind) {
+      const from = parseYmd(document.getElementById(kind === 'hist' ? 'admHistFrom' : 'admSessFrom').value);
+      const toDay = parseYmd(document.getElementById(kind === 'hist' ? 'admHistTo' : 'admSessTo').value);
+      if (!from || !toDay) return null;
+      const to = new Date(toDay); to.setDate(toDay.getDate() + 1);
+      return from < to ? { from, to } : null;
+    }
+
+    window.adminClearPreview = function(kind) {
+      adminPreviewState[kind] = null;
+      document.getElementById(kind === 'hist' ? 'admHistPreview' : 'admSessPreview').innerHTML = '';
+      const btn = document.getElementById(kind === 'hist' ? 'admHistDelete' : 'admSessDelete');
+      btn.disabled = true;
+      btn.textContent = 'Delete';
+    };
+
+    function adminDeleteArgs(kind) {
+      const range = adminRange(kind);
+      if (!range) return null;
+      const op = document.getElementById(kind === 'hist' ? 'admHistOp' : 'admSessOp').value;
+      return { p_from: range.from.toISOString(), p_to: range.to.toISOString(), p_operator: op || null };
+    }
+
+    window.adminPreviewDelete = async function(kind) {
+      const args = adminDeleteArgs(kind);
+      const out = document.getElementById(kind === 'hist' ? 'admHistPreview' : 'admSessPreview');
+      if (!args) { out.textContent = 'Pick a From date that is on or before the To date.'; return; }
+      const fn = kind === 'hist' ? 'admin_delete_history' : 'admin_delete_sessions';
+      const res = await adminCall(fn, Object.assign({ p_preview: true }, args));
+      if (!res) return;
+      const noun = kind === 'hist' ? 'history entr' + (res.count === 1 ? 'y' : 'ies') : 'session' + (res.count === 1 ? '' : 's');
+      const who = args.p_operator ? ` by ${escapeHtml(args.p_operator)}` : '';
+      out.innerHTML = res.count
+        ? `Found <span class="count">${res.count} ${noun}</span>${who} in that range.`
+        : `No ${kind === 'hist' ? 'history entries' : 'sessions'}${who} in that range.`;
+      adminPreviewState[kind] = res.count ? { args, count: res.count } : null;
+      const btn = document.getElementById(kind === 'hist' ? 'admHistDelete' : 'admSessDelete');
+      btn.disabled = !res.count;
+      btn.textContent = res.count ? `Delete ${res.count}` : 'Delete';
+    };
+
+    window.adminDelete = async function(kind) {
+      const state = adminPreviewState[kind];
+      if (!state) return;
+      const noun = kind === 'hist' ? 'history entries' : 'grader sessions';
+      if (!confirm(`Permanently delete ${state.count} ${noun}?\n\nThis can't be undone.`)) return;
+      const fn = kind === 'hist' ? 'admin_delete_history' : 'admin_delete_sessions';
+      const res = await adminCall(fn, Object.assign({ p_preview: false }, state.args));
+      if (!res) return;
+      adminClearPreview(kind);
+      adminToast(`Deleted ${res.count} ${noun}.`);
+      loadAdminData();
+    };
+
+    function renderAdminHazards() {
+      const list = document.getElementById('admHazardList');
+      const pins = Object.values(hazardData).sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)));
+      if (!pins.length) {
+        list.innerHTML = '<div class="admin-list-empty">No hazard pins on the map.</div>';
+      } else {
+        list.innerHTML = pins.map(p => `
+          <label class="admin-item">
+            <input type="checkbox" class="adm-hazard-cb" value="${escapeHtml(p.id)}" onchange="adminHazardSelection()" />
+            <div class="main">
+              <div><strong>${escapeHtml(p.hazard_type || 'Hazard')}</strong>${p.photo_url ? ' 📷' : ''}</div>
+              <div class="sub">${escapeHtml(p.created_at ? new Date(p.created_at).toLocaleDateString() : '')} · ${escapeHtml(p.created_by || 'Unknown')}${p.notes ? ' · ' + escapeHtml(p.notes) : ''}</div>
+            </div>
+          </label>`).join('');
+      }
+      adminHazardSelection();
+    }
+
+    window.adminHazardSelection = function() {
+      const n = document.querySelectorAll('.adm-hazard-cb:checked').length;
+      const btn = document.getElementById('admHazardDelete');
+      btn.disabled = n === 0;
+      btn.textContent = n ? `Delete ${n} selected` : 'Delete selected';
+    };
+
+    window.adminDeleteHazards = async function() {
+      const ids = [...document.querySelectorAll('.adm-hazard-cb:checked')].map(cb => cb.value);
+      if (!ids.length) return;
+      if (!confirm(`Delete ${ids.length} hazard pin(s) and their photos from every device?`)) return;
+      const res = await adminCall('admin_delete_hazards', { p_ids: ids });
+      if (!res) return;
+      const deleted = res.deleted || [];
+      const photos = deleted.filter(d => d.photo).map(d => `${d.id}.jpg`);
+      if (photos.length) {
+        await dbClient.storage.from('hazard_photos').remove(photos).catch(() => {});
+      }
+      ids.forEach(id => removeHazardMarker(id));
+      // Drop any unsent copies of these pins on this device
+      syncQueue = syncQueue.filter(op => !(op.type === 'hazard_add' && ids.includes(op.pin.id)));
+      persistQueue();
+      updateSyncBadge();
+      adminToast(`Deleted ${deleted.length} hazard pin(s).`);
+      loadAdminData();
+    };
+
+    function renderAdminDrivers() {
+      const list = document.getElementById('admDriverList');
+      const names = readJson('sverdrup_known_operators', []);
+      list.innerHTML = names.length
+        ? names.map((n, i) => `
+            <div class="admin-item">
+              <div class="main">${escapeHtml(n)}${sameName(n, currentOperator) ? ' <span class="sub">(signed in)</span>' : ''}</div>
+              <button class="remove" onclick="adminForgetDriver(${i})">Remove</button>
+            </div>`).join('')
+        : '<div class="admin-list-empty">No saved names on this device.</div>';
+    }
+
+    window.adminForgetDriver = function(index) {
+      const names = readJson('sverdrup_known_operators', []);
+      const removed = names.splice(index, 1)[0];
+      writeJson('sverdrup_known_operators', names);
+      renderAdminDrivers();
+      if (removed) adminToast(`Removed "${removed}" from this device's list.`);
+    };
+
+    // --- Auto-blade ---
+    window.adminSaveAutoblade = async function() {
+      const min = parseFloat(document.getElementById('admAbMin').value);
+      const max = parseFloat(document.getElementById('admAbMax').value);
+      const coverage = parseInt(document.getElementById('admAbCoverage').value, 10);
+      const modeEl = document.querySelector('input[name="admAbMode"]:checked');
+      const mode = modeEl ? modeEl.value : 'auto';
+      const res = await adminCall('admin_save_autoblade', { p_min_mph: min, p_max_mph: max, p_coverage: coverage, p_mode: mode });
+      if (!res) return;
+      Object.assign(autoBladeCfg, { minMph: min, maxMph: max, coverage, mode });
+      adminToast('Auto-blade settings saved for every device.');
+    };
+
+    // --- Security ---
+    window.adminChangePin = async function() {
+      const a = document.getElementById('admNewPin');
+      const b = document.getElementById('admNewPin2');
+      if (a.value !== b.value) { adminToast("The two PINs don't match.", true); return; }
+      const res = await adminCall('admin_change_pin', { p_new_pin: a.value });
+      if (!res) return;
+      adminPin = a.value.trim();
+      a.value = '';
+      b.value = '';
+      adminToast('PIN changed. Use the new PIN from now on.');
+    };
+
+    document.addEventListener('keydown', e => {
+      if (e.key === 'Escape' && document.getElementById('adminPanel').style.display === 'flex') closeAdminPanel();
+    });
+
     // --- INSTANT REALTIME WEBSOCKET SYNC ---
     if (dbClient) {
       dbClient
@@ -2094,23 +3329,30 @@
           }
         }).addTo(map);
 
+        buildAutoBladeIndex(geojson);
+
         // Show this device's unsent changes right away, then load the server state
         overlayPendingChanges();
         await refreshFromServer();
         updateSyncBadge();
         flushQueue();
+        if (readString('sverdrup_autoblade') === '1' && currentOperator && navigator.geolocation) {
+          setAutoBlade(true, { quiet: true });
+        }
       })
       .catch(err => console.error('Error loading geojson:', err));
 
-    window.saveStatus = function(segmentId, newStatus) {
+    window.saveStatus = function(segmentId, newStatus, opts) {
+      opts = opts || {};
+      const source = opts.source || 'manual';
       if (!currentOperator && newStatus !== 'untouched') {
         openOperatorModal();
         return;
       }
 
       const isReset = newStatus === 'untouched';
-      const noteInput = document.getElementById(`note_${segmentId}`);
-      const notes = isReset ? '' : (noteInput ? noteInput.value.trim() : '');
+      const noteInput = source === 'manual' ? document.getElementById(`note_${segmentId}`) : null;
+      const notes = isReset ? '' : (opts.notes != null ? opts.notes : (noteInput ? noteInput.value.trim() : ''));
       const changedAt = new Date().toISOString();
 
       const row = {
@@ -2134,7 +3376,7 @@
           notes: notes,
           changed_by: currentOperator || null,
           changed_at: changedAt,
-          source: 'manual'
+          source: source
         }
       });
 
@@ -2145,8 +3387,35 @@
 
       roadStatuses[segmentId] = row;
       applyStyle(segmentId);
-      map.closePopup();
+      if (source === 'manual') map.closePopup();
     };
+
+    // Put a road back exactly how it was (used by auto-blade Undo)
+    function restoreStatus(segmentId, prevRow) {
+      const changedAt = new Date().toISOString();
+      const row = prevRow
+        ? { segment_id: segmentId, status: prevRow.status, updated_at: prevRow.updated_at || null,
+            updated_by: prevRow.updated_by || null, notes: prevRow.notes || '' }
+        : { segment_id: segmentId, status: 'untouched', updated_at: null, updated_by: null, notes: '' };
+      enqueue({
+        type: 'road_status',
+        segmentId: segmentId,
+        changedAt: changedAt,
+        row: row,
+        log: {
+          id: newId(),
+          segment_id: segmentId,
+          road_name: roadNames[segmentId] || null,
+          status: row.status || 'untouched',
+          notes: 'Undo GPS auto-blade',
+          changed_by: currentOperator || null,
+          changed_at: changedAt,
+          source: 'auto'
+        }
+      });
+      roadStatuses[segmentId] = row;
+      applyStyle(segmentId);
+    }
 
     // --- GPS CONTROLLER ---
     let watchId = null;
@@ -2163,6 +3432,7 @@
         userMarker = null;
       }
       document.getElementById('gpsToggle').classList.remove('tracking');
+      if (autoBladeOn) setAutoBlade(false);
     }
 
     window.toggleGPS = function() {
@@ -2181,6 +3451,8 @@
           const lat = pos.coords.latitude;
           const lng = pos.coords.longitude;
           activeGpsCoords = [lat, lng];
+
+          handleAutoBladeFix(lat, lng, pos.coords.speed, pos.coords.accuracy, pos.timestamp);
 
           if (!userMarker) {
             const icon = L.divIcon({ className: 'gps-marker-pulse', iconSize: [16, 16] });
@@ -2203,105 +3475,6 @@
       );
     };
 
-    // --- MODAL & MENU HANDLERS ---
-    window.openSettingsModal = function() {
-      document.getElementById('settingsModal').style.display = 'flex';
-    };
-
-    window.closeSettingsModal = function() {
-      document.getElementById('settingsModal').style.display = 'none';
-      document.getElementById('adminPin').value = '';
-    };
-
-    window.handlePresetChange = function(val) {
-      const customGroup = document.getElementById('customDaysGroup');
-      if (val === 'custom') {
-        customGroup.style.display = 'block';
-      } else {
-        customGroup.style.display = 'none';
-        if (val === 'monthly') {
-          document.getElementById('inputGreenDays').value = 21;
-          document.getElementById('inputYellowDays').value = 30;
-        } else if (val === 'quick') {
-          document.getElementById('inputGreenDays').value = 7;
-          document.getElementById('inputYellowDays').value = 14;
-        }
-      }
-    };
-
-    window.applySettingsAndReset = async function() {
-      const pin = document.getElementById('adminPin').value;
-      if (!pin) {
-        alert('Enter the admin PIN.');
-        return;
-      }
-      if (!dbClient || navigator.onLine === false) {
-        alert('Admin changes need a data connection. Try again when you have signal.');
-        return;
-      }
-
-      const newGreen = parseInt(document.getElementById('inputGreenDays').value, 10) || 21;
-      const newYellow = parseInt(document.getElementById('inputYellowDays').value, 10) || 30;
-      if (newYellow <= newGreen) {
-        alert('Yellow days must be more than green days.');
-        return;
-      }
-
-      const resetType = document.getElementById('resetTypeSelect').value;
-      const now = new Date();
-      const resetIds = [];
-
-      Object.keys(roadLayers).forEach(id => {
-        if (isTownStreet(id)) return;
-        const cur = roadStatuses[id];
-        let shouldReset = false;
-
-        if (resetType === 'all') {
-          shouldReset = true;
-        } else if (cur && cur.updated_at) {
-          const daysOld = (now - new Date(cur.updated_at)) / (1000 * 60 * 60 * 24);
-          if (resetType === 'older_than_green' && daysOld > newGreen) shouldReset = true;
-          if (resetType === 'older_than_yellow' && daysOld > newYellow) shouldReset = true;
-        }
-        if (shouldReset) resetIds.push(id);
-      });
-
-      const applyBtn = document.getElementById('adminApplyBtn');
-      applyBtn.disabled = true;
-      applyBtn.innerText = 'Applying...';
-
-      try {
-        const { error } = await dbClient.rpc('admin_apply', {
-          p_pin: pin,
-          p_green: newGreen,
-          p_yellow: newYellow,
-          p_reset_ids: resetIds,
-          p_by: currentOperator || null
-        });
-
-        if (error) {
-          if (/invalid_pin/.test(error.message || '')) {
-            alert('Incorrect Admin PIN.');
-          } else {
-            alert('Could not apply settings: ' + (error.message || 'unknown error'));
-          }
-          return;
-        }
-
-        greenThresholdDays = newGreen;
-        yellowThresholdDays = newYellow;
-        resetIds.forEach(id => {
-          roadStatuses[id] = { segment_id: id, status: 'untouched', updated_at: null, updated_by: null, notes: '' };
-        });
-        redrawAllRoads();
-
-        alert(`Updated: Green ≤ ${newGreen}d, Yellow ≤ ${newYellow}d. ${resetIds.length} road segment(s) reset.`);
-        closeSettingsModal();
-      } finally {
-        applyBtn.disabled = false;
-        applyBtn.innerText = 'Apply / Save';
-      }
-    };
   </script>
 </body>
 </html>
