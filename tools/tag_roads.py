@@ -24,15 +24,15 @@ TOWN_STREETS = {
     'DOUGLAS BLVD', 'DOUGLAS DR', 'JANS CIR', 'RICHARDS CIR', 'BONNIES CIR',
     'CAITLIN AVE', 'NIDAROS AVE', 'ST OLAF AVE', 'BULLDOG AVE', 'VIKING AVE',
     'MOREFIELD AVE', 'JOHNSON AVE', 'KRINGEN AVE', 'RIVERPARK RD',
-}
-
-# Pending township decision
-SUBDIVISION_STREETS = {
-    # East side of Baltic
+    # East side of Baltic (newer neighborhoods inside town)
     'AANA AVE', 'KYLE AVE', 'SUNI AVE', 'N 6TH ST', 'S 6TH ST', '7TH ST',
     'RONALD CT', 'NICHOLE CV', 'KAROL CIR', 'VALLEY VIEW AVE', 'MEADOW ST',
     'PRAIRIE AVE', 'ELLA AVE', 'IVER AVE', 'PEYTON ST', 'LANEY LN',
     'ELIZABETH AVE', 'KATHRYN DR',
+}
+
+# Pending township decision
+SUBDIVISION_STREETS = {
     # Near 475th Ave & 255th St
     'WASHINGTON ST', 'LINCOLN ST', 'ROCK RIDGE AVE', 'STONEWAY AVE', 'HELEN TRL',
     # Spurs off the section roads
@@ -40,7 +40,9 @@ SUBDIVISION_STREETS = {
 }
 
 # Per-segment overrides by OBJECTID, e.g. {12345: 'town'}
-OVERRIDES = {}
+OVERRIDES = {
+    12456: 'town',  # 250th St between 6th and 7th St, inside Baltic
+}
 
 
 def miles(a, b):
