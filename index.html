@@ -114,6 +114,63 @@
       border-color: #dc2626;
       color: #fca5a5;
     }
+    .dock-btn.mileage-btn {
+      display: block;
+      text-align: left;
+      min-width: 168px;
+    }
+    .mileage-bar {
+      margin-top: 6px;
+      height: 6px;
+      border-radius: 3px;
+      background: #334155;
+      overflow: hidden;
+    }
+    .mileage-bar.big {
+      height: 10px;
+      border-radius: 5px;
+      margin: 8px 0 4px;
+    }
+    .mileage-bar > div {
+      height: 100%;
+      width: 0;
+      background: #16a34a;
+      transition: width 0.4s ease;
+    }
+    .mileage-big {
+      font-size: 30px;
+      font-weight: 800;
+      color: #f8fafc;
+    }
+    .mileage-big span {
+      font-size: 14px;
+      font-weight: 600;
+      color: #94a3b8;
+    }
+    .mileage-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 8px 0;
+      border-bottom: 1px solid #334155;
+      font-size: 14px;
+    }
+    .mileage-swatch {
+      width: 22px;
+      height: 6px;
+      border-radius: 3px;
+      box-sizing: border-box;
+      flex-shrink: 0;
+    }
+    .mileage-label {
+      flex: 1;
+      color: #e2e8f0;
+    }
+    .mileage-val {
+      font-weight: 700;
+      font-variant-numeric: tabular-nums;
+      color: #f8fafc;
+    }
     .dock-btn.active-filter {
       border-color: #f97316;
       color: #f97316;
@@ -158,6 +215,15 @@
       display: flex;
       align-items: center;
       gap: 6px;
+    }
+    @media (max-width: 560px) {
+      .operator-badge {
+        top: auto;
+        bottom: 28px;
+        left: auto;
+        right: 14px;
+        transform: none;
+      }
     }
     .operator-badge span {
       color: #94a3b8;
@@ -349,6 +415,10 @@
     <button id="filterBtn" class="dock-btn" onclick="cycleFilter()">🔍 Filter: All</button>
     <button id="labelBtn" class="dock-btn" onclick="toggleLabels()">🏷️ Labels: OFF</button>
     <button id="syncBtn" class="dock-btn sync-btn" style="display:none;" onclick="onSyncBadgeTap()"></button>
+    <button id="mileageBtn" class="dock-btn mileage-btn" style="display:none;" onclick="openMileageModal()">
+      <span id="mileageText">🛣️ —</span>
+      <div class="mileage-bar"><div id="mileageFill"></div></div>
+    </button>
   </div>
 
   <div id="operatorBadge" class="operator-badge" onclick="openOperatorModal()">
@@ -362,6 +432,17 @@
   </div>
 
   <button class="admin-menu-btn" onclick="openSettingsModal()">⚙️ Cycle & Reset Settings</button>
+
+  <!-- Mileage Breakdown Modal -->
+  <div id="mileageModal" class="modal-overlay" onclick="if (event.target === this) closeMileageModal()">
+    <div class="modal-card">
+      <h2>🛣️ Township Mileage</h2>
+      <div id="mileageBody"></div>
+      <div class="modal-actions">
+        <button class="btn-secondary" onclick="closeMileageModal()">Close</button>
+      </div>
+    </div>
+  </div>
 
   <!-- Operator Sign-In Modal -->
   <div id="operatorModal" class="modal-overlay">
@@ -836,6 +917,108 @@
       return props.STNM1 || props.STREETNAME || props.Name || 'Township Road';
     }
 
+    // =====================================================================
+    // TOWN STREETS & MILEAGE COUNTER
+    // MAINT and LEN_MI come from sverdrup_roads.geojson (tools/tag_roads.py)
+    // =====================================================================
+    const COUNT_SUBDIVISIONS = true; // set false once the township decides to drop them
+    const TOWN_STYLE = { color: '#cbd5e1', weight: 2, dashArray: null, opacity: 0.3 };
+
+    let roadMaint = {};
+    let roadMiles = {};
+
+    function isTownStreet(id) {
+      return roadMaint[id] === 'town';
+    }
+    function isCounted(id) {
+      const m = roadMaint[id];
+      if (m === 'town') return false;
+      if (m === 'subdivision') return COUNT_SUBDIVISIONS;
+      return true;
+    }
+    function lineMiles(geometry) {
+      const lines = geometry.type === 'MultiLineString' ? geometry.coordinates : [geometry.coordinates];
+      const R = 3958.8, rad = Math.PI / 180;
+      let total = 0;
+      lines.forEach(line => {
+        for (let i = 0; i < line.length - 1; i++) {
+          const [lo1, la1] = line[i], [lo2, la2] = line[i + 1];
+          const h = Math.sin((la2 - la1) * rad / 2) ** 2 +
+            Math.cos(la1 * rad) * Math.cos(la2 * rad) * Math.sin((lo2 - lo1) * rad / 2) ** 2;
+          total += 2 * R * Math.asin(Math.sqrt(h));
+        }
+      });
+      return total;
+    }
+
+    function computeMileage() {
+      const buckets = { graded: 0, warning: 0, gravel: 0, not_graded: 0, untouched: 0 };
+      let total = 0, subdivisionMiles = 0;
+      Object.keys(roadMiles).forEach(id => {
+        if (!isCounted(id)) return;
+        const mi = roadMiles[id];
+        const cur = roadStatuses[id];
+        const cat = (cur ? calculateRoadVisual(cur.status, cur.updated_at) : calculateRoadVisual(null, null)).category;
+        buckets[cat] = (buckets[cat] || 0) + mi;
+        total += mi;
+        if (roadMaint[id] === 'subdivision') subdivisionMiles += mi;
+      });
+      const done = buckets.graded + buckets.warning;
+      return { total, done, pct: total ? (done / total) * 100 : 0, buckets, subdivisionMiles };
+    }
+
+    let mileageFrame = null;
+    function scheduleMileageUpdate() {
+      if (mileageFrame) return;
+      mileageFrame = requestAnimationFrame(() => {
+        mileageFrame = null;
+        updateMileageWidget();
+      });
+    }
+
+    function updateMileageWidget() {
+      const btn = document.getElementById('mileageBtn');
+      if (!btn || Object.keys(roadMiles).length === 0) return;
+      const m = computeMileage();
+      btn.style.display = 'block';
+      document.getElementById('mileageText').textContent =
+        `🛣️ ${m.done.toFixed(1)} / ${m.total.toFixed(1)} mi · ${Math.round(m.pct)}%`;
+      document.getElementById('mileageFill').style.width = Math.min(100, m.pct).toFixed(1) + '%';
+      if (document.getElementById('mileageModal').style.display === 'flex') renderMileageModal(m);
+    }
+
+    function renderMileageModal(m) {
+      m = m || computeMileage();
+      const row = (color, dashed, label, mi) => `
+        <div class="mileage-row">
+          <span class="mileage-swatch" style="background:${dashed ? 'transparent' : color}; ${dashed ? `border:2px dashed ${color};` : ''}"></span>
+          <span class="mileage-label">${label}</span>
+          <span class="mileage-val">${mi.toFixed(1)} mi</span>
+        </div>`;
+      document.getElementById('mileageBody').innerHTML = `
+        <div class="mileage-big">${m.done.toFixed(1)} <span>of ${m.total.toFixed(1)} mi graded this cycle</span></div>
+        <div class="mileage-bar big"><div style="width:${Math.min(100, m.pct).toFixed(1)}%"></div></div>
+        <p style="margin-top:6px;">Graded within the last ${yellowThresholdDays} days counts as done.</p>
+        ${row('#16a34a', false, `Graded (≤ ${greenThresholdDays} days)`, m.buckets.graded)}
+        ${row('#eab308', false, `Graded, aging (${greenThresholdDays + 1}–${yellowThresholdDays} days)`, m.buckets.warning)}
+        ${row('#ea580c', false, 'Needs work / gravel', m.buckets.gravel)}
+        ${row('#dc2626', false, 'Needs graded / overdue', m.buckets.not_graded)}
+        ${row('#94a3b8', true, 'Untouched', m.buckets.untouched)}
+        <p style="margin-top:12px;">Town streets are not counted.${COUNT_SUBDIVISIONS && m.subdivisionMiles > 0
+          ? ` Includes ${m.subdivisionMiles.toFixed(1)} mi of subdivision roads pending township decision.` : ''}</p>`;
+    }
+
+    window.openMileageModal = function() {
+      renderMileageModal();
+      document.getElementById('mileageModal').style.display = 'flex';
+    };
+    window.closeMileageModal = function() {
+      document.getElementById('mileageModal').style.display = 'none';
+    };
+
+    // Colors age with time, so refresh them even if nobody taps anything
+    setInterval(() => redrawAllRoads(), 30 * 60 * 1000);
+
     function redrawAllRoads() {
       Object.keys(roadLayers).forEach(id => {
         applyStyle(id);
@@ -844,6 +1027,11 @@
 
     function applyStyle(segmentId) {
       const current = roadStatuses[segmentId];
+      scheduleMileageUpdate();
+      if (roadLayers[segmentId] && isTownStreet(segmentId)) {
+        roadLayers[segmentId].setStyle(TOWN_STYLE);
+        return;
+      }
       if (roadLayers[segmentId]) {
         const visual = current
           ? calculateRoadVisual(current.status, current.updated_at)
@@ -898,6 +1086,7 @@
       Object.keys(roadLayers).forEach(id => {
         const layer = roadLayers[id];
         const name = roadNames[id];
+        if (showLabels && isTownStreet(id)) return;
         if (showLabels) {
           if (!layer.getTooltip()) {
             layer.bindTooltip(escapeHtml(name), {
@@ -1245,8 +1434,16 @@
         return res.json();
       })
       .then(async geojson => {
-        // 1. INVISIBLE WIDE HITBOX LAYER (34px wide)
+        geojson.features.forEach(f => {
+          const id = getRoadId(f.properties);
+          roadMaint[id] = f.properties.MAINT || 'township';
+          roadMiles[id] = typeof f.properties.LEN_MI === 'number' ? f.properties.LEN_MI : lineMiles(f.geometry);
+        });
+        const isTownFeature = f => roadMaint[getRoadId(f.properties)] === 'town';
+
+        // 1. INVISIBLE WIDE HITBOX LAYER (34px wide) — town streets get no hitbox
         L.geoJSON(geojson, {
+          filter: f => !isTownFeature(f),
           style: () => ({
             color: '#000',
             weight: 34,
@@ -1270,7 +1467,8 @@
 
         // 2. VISIBLE ROAD LINES LAYER
         L.geoJSON(geojson, {
-          style: () => {
+          style: f => {
+            if (isTownFeature(f)) return Object.assign({ interactive: false }, TOWN_STYLE);
             const visual = calculateRoadVisual(null, null);
             return {
               color: visual.color,
@@ -1476,6 +1674,7 @@
       const resetIds = [];
 
       Object.keys(roadLayers).forEach(id => {
+        if (isTownStreet(id)) return;
         const cur = roadStatuses[id];
         let shouldReset = false;
 
