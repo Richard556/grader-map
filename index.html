@@ -4,9 +4,18 @@
   <meta charset="utf-8" />
   <title>Sverdrup Township Road Tracker</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <meta name="theme-color" content="#0f172a" />
+  <meta name="description" content="Grading cycles, hazards and grader status for Sverdrup Township roads." />
+  <link rel="manifest" href="manifest.webmanifest" />
+  <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png" />
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black" />
+  <meta name="apple-mobile-web-app-title" content="Road Tracker" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="anonymous" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2" crossorigin="anonymous"></script>
   <style>
     html, body, #map {
       height: 100%;
@@ -786,6 +795,163 @@
     }
     .driver-chip:active { filter: brightness(1.2); }
 
+    /* Live grader location */
+    .grader-loc { position: relative; }
+    .grader-loc .gl-dot {
+      position: absolute;
+      left: 4px;
+      top: 4px;
+      width: 36px;
+      height: 36px;
+      border-radius: 50%;
+      background: #f59e0b;
+      border: 3px solid #fff;
+      box-sizing: border-box;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 18px;
+      box-shadow: 0 0 0 4px rgba(245, 158, 11, 0.35), 0 3px 10px rgba(0, 0, 0, 0.6);
+      animation: gl-pulse 2s ease-out infinite;
+    }
+    .grader-loc .gl-arrow {
+      position: absolute;
+      left: 0;
+      top: 0;
+      width: 44px;
+      height: 44px;
+    }
+    .grader-loc .gl-arrow::before {
+      content: '';
+      position: absolute;
+      left: 50%;
+      top: -9px;
+      transform: translateX(-50%);
+      border-left: 8px solid transparent;
+      border-right: 8px solid transparent;
+      border-bottom: 12px solid #f59e0b;
+      filter: drop-shadow(0 0 2px #000);
+    }
+    .grader-loc .gl-name {
+      position: absolute;
+      top: 44px;
+      left: 50%;
+      transform: translateX(-50%);
+      white-space: nowrap;
+      font-size: 12px;
+      font-weight: 800;
+      color: #fff;
+      text-shadow: -2px -2px 0 #000, 2px -2px 0 #000, -2px 2px 0 #000, 2px 2px 0 #000, 0 0 4px #000;
+    }
+    .grader-loc.stale .gl-dot {
+      background: #64748b;
+      animation: none;
+      box-shadow: 0 3px 10px rgba(0, 0, 0, 0.6);
+    }
+    @keyframes gl-pulse {
+      0% { box-shadow: 0 0 0 0 rgba(245, 158, 11, 0.6), 0 3px 10px rgba(0,0,0,0.6); }
+      100% { box-shadow: 0 0 0 16px rgba(245, 158, 11, 0), 0 3px 10px rgba(0,0,0,0.6); }
+    }
+    .share-toggle,
+    .modal-card label.share-toggle {
+      display: flex;
+      align-items: flex-start;
+      gap: 12px;
+      padding: 12px;
+      margin: 4px 0 12px;
+      border: 1px solid #334155;
+      border-radius: 10px;
+      cursor: pointer;
+      font-size: 14px;
+      color: #e2e8f0;
+    }
+    .share-toggle small { color: #94a3b8; }
+    .share-toggle input { position: absolute; opacity: 0; pointer-events: none; }
+    .share-switch {
+      display: block;
+      flex-shrink: 0;
+      width: 46px;
+      height: 26px;
+      border-radius: 13px;
+      background: #475569;
+      position: relative;
+      transition: background 0.2s;
+      margin-top: 2px;
+    }
+    .share-switch::after {
+      content: '';
+      position: absolute;
+      top: 3px;
+      left: 3px;
+      width: 20px;
+      height: 20px;
+      border-radius: 50%;
+      background: #fff;
+      transition: left 0.2s;
+    }
+    .share-toggle input:checked + .share-switch { background: #16a34a; }
+    .share-toggle input:checked + .share-switch::after { left: 23px; }
+
+    /* Install / update banners */
+    .app-banner {
+      position: absolute;
+      left: 50%;
+      transform: translateX(-50%);
+      bottom: 20px;
+      z-index: 2600;
+      width: min(460px, calc(100vw - 28px));
+      box-sizing: border-box;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 10px 10px 10px 12px;
+      background: #1e293b;
+      border: 1px solid #3b82f6;
+      border-radius: 14px;
+      color: #f8fafc;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.6);
+    }
+    .app-banner[hidden] { display: none; }
+    .app-banner.update { border-color: #16a34a; bottom: 74px; }
+    .app-banner img { border-radius: 9px; flex-shrink: 0; }
+    .app-banner-text { flex: 1; font-size: 14px; line-height: 1.3; }
+    .app-banner-text small { color: #94a3b8; }
+    .app-banner-btn {
+      background: #334155;
+      border: none;
+      color: #f8fafc;
+      border-radius: 8px;
+      padding: 10px 12px;
+      font-weight: 800;
+      font-size: 14px;
+      cursor: pointer;
+    }
+    .app-banner-btn.primary { background: #2563eb; }
+    .app-banner.update .app-banner-btn.primary { background: #16a34a; }
+    .install-link {
+      display: block;
+      width: 100%;
+      margin-top: 12px;
+      background: none;
+      border: 1px dashed #475569;
+      color: #93c5fd;
+      border-radius: 8px;
+      padding: 10px;
+      font-size: 14px;
+      font-weight: 700;
+      cursor: pointer;
+    }
+    .install-link[hidden] { display: none; }
+    .ios-steps { padding-left: 20px; color: #e2e8f0; font-size: 15px; line-height: 1.5; }
+    .ios-steps li { margin-bottom: 8px; }
+    .ios-glyph {
+      display: inline-block;
+      border: 1px solid #64748b;
+      border-radius: 5px;
+      padding: 0 5px;
+      font-size: 13px;
+    }
+
     /* Modal Overlays */
     .modal-overlay {
       display: none;
@@ -904,6 +1070,37 @@
   <div id="abChip" class="ab-chip" hidden></div>
   <div id="abToast" class="ab-toast" hidden></div>
   <div id="mapToast" class="map-toast" hidden></div>
+
+  <!-- Install-as-app banner -->
+  <div id="installBanner" class="app-banner" hidden>
+    <img src="icons/icon-192.png" alt="" width="40" height="40" />
+    <div class="app-banner-text"><strong>Install Road Tracker</strong><br><small>Home-screen icon, full screen, works without signal</small></div>
+    <button class="app-banner-btn primary" onclick="installApp()">Install</button>
+    <button class="app-banner-btn" onclick="dismissInstall()" aria-label="Not now">✕</button>
+  </div>
+
+  <!-- New-version banner -->
+  <div id="updateBanner" class="app-banner update" hidden>
+    <div class="app-banner-text"><strong>Update ready</strong><br><small>A newer version of the map is available.</small></div>
+    <button class="app-banner-btn primary" onclick="applyUpdate()">Reload</button>
+  </div>
+
+  <!-- iPhone install steps -->
+  <div id="iosInstallModal" class="modal-overlay" onclick="if (event.target === this) closeIosInstall()">
+    <div class="modal-card">
+      <h2>📲 Add to Home Screen</h2>
+      <p>On iPhone and iPad, install from Safari:</p>
+      <ol class="ios-steps">
+        <li>Tap the <strong>Share</strong> button <span class="ios-glyph">⬆︎</span> at the bottom (or top) of Safari.</li>
+        <li>Scroll down and tap <strong>Add to Home Screen</strong>.</li>
+        <li>Tap <strong>Add</strong>. Open Road Tracker from the new icon.</li>
+      </ol>
+      <p style="font-size:12px;">Using Chrome on iPhone? Open this page in Safari first.</p>
+      <div class="modal-actions">
+        <button class="btn-save" onclick="closeIosInstall()">Got it</button>
+      </div>
+    </div>
+  </div>
 
   <!-- Admin Panel -->
   <div id="adminPanel" class="admin-overlay" onclick="if (event.target === this) closeAdminPanel()">
@@ -1206,6 +1403,7 @@
       <div class="modal-actions">
         <button class="btn-save" onclick="saveOperatorChoice()">Confirm & Start</button>
       </div>
+      <button id="installLink" class="install-link" onclick="installApp()" hidden>📲 Install as an app on this device</button>
     </div>
   </div>
 
@@ -1325,7 +1523,8 @@
 
     L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
       attribution: 'Esri World Imagery',
-      maxZoom: 18
+      maxZoom: 18,
+      crossOrigin: true  // lets the offline cache store tiles efficiently
     }).addTo(map);
 
     let roadStatuses = {};
@@ -2324,6 +2523,7 @@
       graderSession = data || null;
       graderLoaded = true;
       updateGraderUI();
+      if (typeof renderGraderMarker === 'function') renderGraderMarker();
     }
 
     function updateGraderUI() {
@@ -2339,7 +2539,8 @@
       } else {
         const mine = sameName(graderSession.operator, currentOperator);
         btn.classList.add(isGraderStale() ? 'grader-stale' : mine ? 'grader-mine' : 'grader-busy');
-        btn.textContent = `🚜 ${mine ? 'You' : graderSession.operator} · ${formatElapsed(graderSession.started_at)}`;
+        const live = mine ? isSharingLocation() : graderLocationLive();
+        btn.textContent = `🚜 ${mine ? 'You' : graderSession.operator} · ${formatElapsed(graderSession.started_at)}${live ? ' · 📡' : ''}`;
       }
 
       if (document.getElementById('graderModal').style.display === 'flex') renderGraderModal();
@@ -2370,12 +2571,20 @@
             <div class="grader-status mine">🚜 You're in the grader</div>
             <p>Since ${since} (${elapsed})</p>
             ${staleNote}
+            <label class="share-toggle">
+              <input type="checkbox" ${shareLocationPref ? 'checked' : ''} onchange="toggleShareLocation(this.checked)" />
+              <span class="share-switch"></span>
+              <span><strong>📡 Share my location</strong><br><small>Everyone sees where the grader is while you're checked in. Stops when you check out.</small></span>
+            </label>
             <button class="cab-btn btn-orange" onclick="graderCheckOut()">Check Out</button>`;
         } else {
           html = `
             <div class="grader-status busy">🚜 ${who} is in the grader</div>
             <p>Since ${since} (${elapsed})</p>
             ${staleNote}
+            ${graderLocationLive()
+              ? `<button class="cab-btn btn-gray" style="border-style:solid;" onclick="showGraderOnMap()">📍 Show grader on map · ${escapeHtml(agoText(graderLocation.updated_at))}</button>`
+              : `<p style="font-size:13px;">Location not shared.</p>`}
             <button class="cab-btn btn-orange" onclick="graderCheckIn(true)">Take Over as ${meHtml}</button>
             <button class="cab-btn btn-gray" onclick="graderCheckOut()">End ${who}'s Session (Grader Free)</button>`;
         }
@@ -2433,6 +2642,11 @@
         graderLoaded = true;
         updateGraderUI();
         closeGraderModal();
+        if (shareLocationPref) {
+          locLastSent = null;
+          if (watchId === null) toggleGPS();
+          showMapToast('Sharing grader location with everyone');
+        }
       } finally {
         graderBusy = false;
       }
@@ -2454,7 +2668,9 @@
         }
         graderSession = null;
         graderLoaded = true;
+        locLastSent = null;
         updateGraderUI();
+        renderGraderMarker();
         closeGraderModal();
       } finally {
         graderBusy = false;
@@ -2464,6 +2680,161 @@
     // Keep the elapsed time ticking
     setInterval(() => updateGraderUI(), 60000);
     fetchGraderSession();
+
+    // =====================================================================
+    // LIVE GRADER LOCATION (opt-in)
+    // Whoever is checked into the grader can choose to share where it is.
+    // Everyone else sees a 🚜 marker. Only the latest position is stored.
+    // =====================================================================
+    const LOC_SEND_EVERY_MS = 10000;   // at most one update per 10 s while moving
+    const LOC_HEARTBEAT_MS = 60000;    // and at least once a minute when parked
+    const LOC_MIN_MOVE_M = 15;
+    const LOC_STALE_MIN = 5;           // greyed out after this long without an update
+    const LOC_HIDE_MIN = 30;           // hidden entirely after this long
+
+    let shareLocationPref = readString('sverdrup_share_location') === '1';
+    let graderLocation = null;         // latest row from the server
+    let graderMarker = null;
+    let locLastSent = null;            // { t, lat, lng }
+    let locSending = false;
+
+    function isSharingLocation() {
+      return shareLocationPref && graderSession && sameName(graderSession.operator, currentOperator);
+    }
+
+    function setSharePref(on) {
+      shareLocationPref = on;
+      try { localStorage.setItem('sverdrup_share_location', on ? '1' : '0'); } catch (e) {}
+    }
+
+    window.toggleShareLocation = function(on) {
+      if (on) {
+        if (!navigator.geolocation) { alert('GPS is not supported on this device.'); renderGraderModal(); return; }
+        setSharePref(true);
+        locLastSent = null;
+        if (watchId === null) toggleGPS();
+        else if (activeGpsCoords) maybeSendLocation(activeGpsCoords[0], activeGpsCoords[1], null, null, null, true);
+        showMapToast('Sharing grader location with everyone');
+      } else {
+        setSharePref(false);
+        stopSharingOnServer();
+        showMapToast('Location sharing off');
+      }
+      updateGraderUI();
+    };
+
+    function stopSharingOnServer() {
+      locLastSent = null;
+      if (dbClient && currentOperator && navigator.onLine !== false) {
+        dbClient.rpc('stop_grader_location', { p_operator: currentOperator }).then(() => {}, () => {});
+      }
+    }
+
+    // Called on every GPS fix
+    async function maybeSendLocation(lat, lng, headingDeg, speedMps, accuracyM, force) {
+      if (!isSharingLocation() || !dbClient || locSending || navigator.onLine === false) return;
+      const now = Date.now();
+      if (!force && locLastSent) {
+        const since = now - locLastSent.t;
+        const moved = L.latLng(lat, lng).distanceTo([locLastSent.lat, locLastSent.lng]);
+        if (since < LOC_SEND_EVERY_MS) return;
+        if (moved < LOC_MIN_MOVE_M && since < LOC_HEARTBEAT_MS) return;
+      }
+      locSending = true;
+      try {
+        const { data, error } = await dbClient.rpc('share_grader_location', {
+          p_operator: currentOperator,
+          p_lat: lat,
+          p_lng: lng,
+          p_heading: (headingDeg != null && !isNaN(headingDeg)) ? headingDeg : null,
+          p_speed_mph: (speedMps != null && speedMps >= 0) ? Math.round(speedMps * 2.23694 * 10) / 10 : null,
+          p_accuracy_m: accuracyM != null ? Math.round(accuracyM) : null
+        });
+        if (!error && data && data.ok) locLastSent = { t: now, lat, lng };
+      } catch (e) {
+        // No signal — try again on the next fix
+      } finally {
+        locSending = false;
+      }
+    }
+
+    async function fetchGraderLocation() {
+      if (!dbClient) return;
+      const { data, error } = await dbClient.from('grader_location').select('*').eq('id', 1).maybeSingle();
+      if (error) return;  // table not set up yet, or no signal
+      graderLocation = data || null;
+      renderGraderMarker();
+    }
+
+    function minutesAgo(iso) {
+      return (Date.now() - new Date(iso)) / 60000;
+    }
+
+    function agoText(iso) {
+      const m = minutesAgo(iso);
+      if (m < 1) return 'just now';
+      if (m < 60) return `${Math.floor(m)} min ago`;
+      return `${Math.floor(m / 60)} h ${Math.floor(m % 60)} min ago`;
+    }
+
+    function graderLocationLive() {
+      const g = graderLocation;
+      return !!(g && g.sharing && g.lat != null && g.updated_at && minutesAgo(g.updated_at) < LOC_HIDE_MIN &&
+        graderSession && sameName(graderSession.operator, g.operator));
+    }
+
+    function renderGraderMarker() {
+      const g = graderLocation;
+      // The sharer already sees their own blue GPS dot
+      const show = graderLocationLive() && !sameName(g.operator, currentOperator);
+      if (!show) {
+        if (graderMarker) { map.removeLayer(graderMarker); graderMarker = null; }
+        if (document.getElementById('graderModal').style.display === 'flex') renderGraderModal();
+        return;
+      }
+      const stale = minutesAgo(g.updated_at) >= LOC_STALE_MIN;
+      const moving = g.speed_mph != null && g.speed_mph >= 1;
+      const arrow = (moving && g.heading != null)
+        ? `<div class="gl-arrow" style="transform: rotate(${Number(g.heading).toFixed(0)}deg)"></div>` : '';
+      const icon = L.divIcon({
+        className: 'grader-loc' + (stale ? ' stale' : ''),
+        html: `${arrow}<div class="gl-dot">🚜</div><div class="gl-name">${escapeHtml(g.operator)}${stale ? ' · ' + escapeHtml(agoText(g.updated_at)) : ''}</div>`,
+        iconSize: [44, 44],
+        iconAnchor: [22, 22]
+      });
+      const popup = `
+        <div class="popup-container">
+          <div class="popup-title">🚜 ${escapeHtml(g.operator)}</div>
+          <div class="popup-meta">
+            Updated <strong>${escapeHtml(agoText(g.updated_at))}</strong>${stale ? ' (may have lost signal)' : ''}<br>
+            ${moving ? `Moving about <strong>${Number(g.speed_mph).toFixed(0)} mph</strong>` : 'Stopped'}
+            ${graderSession ? `<br>In the grader since ${escapeHtml(formatStart(graderSession.started_at))}` : ''}
+          </div>
+        </div>`;
+      if (!graderMarker) {
+        graderMarker = L.marker([g.lat, g.lng], { icon, zIndexOffset: 1000, keyboard: false }).addTo(map);
+        graderMarker.bindPopup(popup);
+      } else {
+        graderMarker.setLatLng([g.lat, g.lng]);
+        graderMarker.setIcon(icon);
+        graderMarker.setPopupContent(popup);
+      }
+      if (document.getElementById('graderModal').style.display === 'flex') renderGraderModal();
+    }
+
+    window.showGraderOnMap = function() {
+      if (!graderLocationLive()) return;
+      closeGraderModal();
+      map.setView([graderLocation.lat, graderLocation.lng], Math.max(map.getZoom(), 15));
+      if (graderMarker) graderMarker.openPopup();
+    };
+
+    // Refresh "x min ago" and staleness; resend a heartbeat when parked
+    setInterval(() => {
+      renderGraderMarker();
+      if (isSharingLocation() && activeGpsCoords) maybeSendLocation(activeGpsCoords[0], activeGpsCoords[1], null, null, null, false);
+    }, 30000);
+
 
     // =====================================================================
     // REPORTS / CSV EXPORT
@@ -3437,6 +3808,108 @@
       if (e.key === 'Escape' && document.getElementById('adminPanel').style.display === 'flex') closeAdminPanel();
     });
 
+    // =====================================================================
+    // INSTALL AS APP + OFFLINE (service worker)
+    // =====================================================================
+    let deferredInstallPrompt = null;
+    const INSTALL_DISMISS_KEY = 'sverdrup_install_dismissed_at';
+    const INSTALL_SNOOZE_DAYS = 14;
+
+    function isStandalone() {
+      return window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
+    }
+    function isIOS() {
+      return /iphone|ipad|ipod/i.test(navigator.userAgent) ||
+        (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+    }
+    function installSnoozed() {
+      const t = parseInt(readString(INSTALL_DISMISS_KEY) || '0', 10);
+      return t && (Date.now() - t) < INSTALL_SNOOZE_DAYS * 86400000;
+    }
+    function canOfferInstall() {
+      return !isStandalone() && (deferredInstallPrompt || isIOS());
+    }
+
+    function updateInstallUI() {
+      const banner = document.getElementById('installBanner');
+      const link = document.getElementById('installLink');
+      const offer = canOfferInstall();
+      if (link) link.hidden = !offer;
+      banner.hidden = !(offer && !installSnoozed());
+    }
+
+    window.addEventListener('beforeinstallprompt', e => {
+      e.preventDefault();               // show our own button instead of the browser's mini-bar
+      deferredInstallPrompt = e;
+      updateInstallUI();
+    });
+    window.addEventListener('appinstalled', () => {
+      deferredInstallPrompt = null;
+      updateInstallUI();
+      showMapToast('Installed — open it from your home screen');
+    });
+
+    window.installApp = async function() {
+      if (deferredInstallPrompt) {
+        const prompt = deferredInstallPrompt;
+        deferredInstallPrompt = null;
+        prompt.prompt();
+        try { await prompt.userChoice; } catch (e) {}
+        updateInstallUI();
+        return;
+      }
+      // iPhone/iPad: Safari has no install button for websites, so explain the steps
+      document.getElementById('iosInstallModal').style.display = 'flex';
+    };
+
+    window.dismissInstall = function() {
+      try { localStorage.setItem(INSTALL_DISMISS_KEY, String(Date.now())); } catch (e) {}
+      updateInstallUI();
+    };
+
+    window.closeIosInstall = function() {
+      document.getElementById('iosInstallModal').style.display = 'none';
+    };
+
+    // Offline support + update notice
+    let swWaiting = null;
+    function showUpdateReady(worker) {
+      swWaiting = worker;
+      document.getElementById('updateBanner').hidden = false;
+    }
+    window.applyUpdate = function() {
+      document.getElementById('updateBanner').hidden = true;
+      if (swWaiting) swWaiting.postMessage('SKIP_WAITING');
+      else location.reload();
+    };
+
+    if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost' || location.hostname === '127.0.0.1')) {
+      let reloading = false;
+      navigator.serviceWorker.addEventListener('controllerchange', () => {
+        if (reloading) return;
+        // Only reload when the user asked for the update (not on the very first install)
+        if (swWaiting) { reloading = true; location.reload(); }
+      });
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('sw.js').then(reg => {
+          if (reg.waiting && navigator.serviceWorker.controller) showUpdateReady(reg.waiting);
+          reg.addEventListener('updatefound', () => {
+            const w = reg.installing;
+            if (!w) return;
+            w.addEventListener('statechange', () => {
+              if (w.state === 'installed' && navigator.serviceWorker.controller) showUpdateReady(w);
+            });
+          });
+          // Look for a new version when the app comes back to the screen
+          document.addEventListener('visibilitychange', () => {
+            if (document.visibilityState === 'visible') reg.update().catch(() => {});
+          });
+        }).catch(err => console.warn('Offline support unavailable:', err));
+      });
+    }
+
+    updateInstallUI();
+
     // --- INSTANT REALTIME WEBSOCKET SYNC ---
     if (dbClient) {
       dbClient
@@ -3476,6 +3949,11 @@
         )
         .on(
           'postgres_changes',
+          { event: '*', schema: 'public', table: 'grader_location' },
+          payload => { if (payload.new) { graderLocation = payload.new; renderGraderMarker(); updateGraderUI(); } }
+        )
+        .on(
+          'postgres_changes',
           { event: '*', schema: 'public', table: 'operators' },
           () => fetchOperators()
         )
@@ -3499,6 +3977,7 @@
       overlayPendingChanges();
       await fetchGraderSession();
       await fetchOperators();
+      await fetchGraderLocation();
     }
 
     // --- LOAD ROADS ---
@@ -3701,6 +4180,7 @@
       }
       document.getElementById('gpsToggle').classList.remove('tracking');
       if (autoBladeOn) setAutoBlade(false);
+      if (isSharingLocation()) stopSharingOnServer();
     }
 
     window.toggleGPS = function() {
@@ -3721,6 +4201,7 @@
           activeGpsCoords = [lat, lng];
 
           handleAutoBladeFix(lat, lng, pos.coords.speed, pos.coords.accuracy, pos.timestamp);
+          maybeSendLocation(lat, lng, pos.coords.heading, pos.coords.speed, pos.coords.accuracy, false);
 
           if (!userMarker) {
             const icon = L.divIcon({ className: 'gps-marker-pulse', iconSize: [16, 16] });
