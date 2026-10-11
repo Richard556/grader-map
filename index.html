@@ -799,13 +799,13 @@
     .grader-loc { position: relative; }
     .grader-loc .gl-dot {
       position: absolute;
-      left: 4px;
-      top: 4px;
-      width: 36px;
-      height: 36px;
-      border-radius: 50%;
-      background: #f59e0b;
-      border: 3px solid #fff;
+      left: 0;
+      top: 0;
+      width: 60px;
+      height: 40px;
+      border-radius: 20px;
+      background: #ffffff;
+      border: 3px solid #f59e0b;
       box-sizing: border-box;
       display: flex;
       align-items: center;
@@ -816,8 +816,8 @@
     }
     .grader-loc .gl-arrow {
       position: absolute;
-      left: 0;
-      top: 0;
+      left: 8px;
+      top: -2px;
       width: 44px;
       height: 44px;
     }
@@ -843,8 +843,10 @@
       color: #fff;
       text-shadow: -2px -2px 0 #000, 2px -2px 0 #000, -2px 2px 0 #000, 2px 2px 0 #000, 0 0 4px #000;
     }
+    .grader-loc.stale .gl-dot svg { filter: grayscale(1) opacity(0.7); }
     .grader-loc.stale .gl-dot {
-      background: #64748b;
+      background: #cbd5e1;
+      border-color: #64748b;
       animation: none;
       box-shadow: 0 3px 10px rgba(0, 0, 0, 0.6);
     }
@@ -952,6 +954,15 @@
       font-size: 13px;
     }
 
+    .grader-icon {
+      display: inline-block;
+      vertical-align: middle;
+      flex-shrink: 0;
+    }
+    .dock-btn.grader-btn { gap: 8px; }
+    .grader-status { display: flex; align-items: center; gap: 10px; }
+    .popup-title .grader-icon, #graderModalTitle .grader-icon { margin-right: 4px; vertical-align: -3px; }
+
     /* Modal Overlays */
     .modal-overlay {
       display: none;
@@ -1043,7 +1054,7 @@
 
   <!-- Left Side Dock Controls -->
   <div class="controls-dock">
-    <button id="graderBtn" class="dock-btn grader-btn" onclick="openGraderModal()">🚜 Grader: checking…</button>
+    <button id="graderBtn" class="dock-btn grader-btn" onclick="openGraderModal()">Grader: checking…</button>
     <button id="filterBtn" class="dock-btn" onclick="cycleFilter()">🔍 Filter: All</button>
     <button id="labelBtn" class="dock-btn" onclick="toggleLabels()">🏷️ Labels: OFF</button>
     <button id="syncBtn" class="dock-btn sync-btn" style="display:none;" onclick="onSyncBadgeTap()"></button>
@@ -1367,7 +1378,7 @@
   <!-- Grader Check-In Modal -->
   <div id="graderModal" class="modal-overlay" onclick="if (event.target === this) closeGraderModal()">
     <div class="modal-card">
-      <h2>🚜 Grader Check-In</h2>
+      <h2 id="graderModalTitle">Grader Check-In</h2>
       <div id="graderBody"></div>
       <div class="modal-actions">
         <button class="btn-secondary" onclick="closeGraderModal()">Close</button>
@@ -1502,6 +1513,13 @@
       const arr = new Uint8Array(bytes.length);
       for (let i = 0; i < bytes.length; i++) arr[i] = bytes.charCodeAt(i);
       return new Blob([arr], { type: mime });
+    }
+
+    // Original motor grader icon (side view), used wherever the grader appears
+    const GRADER_SVG_INNER = '<g stroke="#0b1220" stroke-width="1.2" stroke-linejoin="round" stroke-linecap="round"> <path d="M10 19 L24 26" fill="none" stroke-width="1.8"/> <path d="M4 22 L8.5 14.5 L37 14.5 L37 19 L11 19 L7.5 23.5 Z" fill="#f59e0b"/> <rect x="1.5" y="19.5" width="4" height="4.5" rx="0.8" fill="#f59e0b"/> <path d="M17 31 Q20.5 25.5 29 24 L31 25.6 Q23.5 27 20.4 32 Z" fill="#475569"/> <path d="M34 13.5 H61 V23 H34 Z" fill="#f59e0b"/> <path d="M47 13.5 V10 H61 V13.5" fill="#f59e0b"/> <rect x="55.2" y="5" width="1.8" height="5" fill="#0b1220"/> <path d="M35.5 13.5 L37 3.5 H46.5 L47.5 13.5 Z" fill="#f59e0b"/> <path d="M37.6 12.6 L38.6 5.4 H45.2 L46 12.6 Z" fill="#bae6fd" stroke-width="0.9"/> <path d="M41.9 5.4 V12.6" fill="none" stroke-width="0.9"/> <circle cx="8" cy="29" r="5.6" fill="#111827"/> <circle cx="40" cy="29" r="5.6" fill="#111827"/> <circle cx="53" cy="29" r="5.6" fill="#111827"/> </g> <g fill="#94a3b8"> <circle cx="8" cy="29" r="2"/> <circle cx="40" cy="29" r="2"/> <circle cx="53" cy="29" r="2"/> </g>';
+    function graderIcon(w, cls) {
+      const h = Math.round(w * 36 / 64);
+      return `<svg class="grader-icon${cls ? ' ' + cls : ''}" viewBox="0 0 64 36" width="${w}" height="${h}" aria-hidden="true">${GRADER_SVG_INNER}</svg>`;
     }
 
     let greenThresholdDays = 21;
@@ -2532,15 +2550,15 @@
       btn.classList.remove('grader-free', 'grader-busy', 'grader-mine', 'grader-stale');
 
       if (!graderLoaded) {
-        btn.textContent = '🚜 Grader: checking…';
+        btn.innerHTML = `${graderIcon(30)}<span>Grader: checking…</span>`;
       } else if (!graderSession) {
         btn.classList.add('grader-free');
-        btn.textContent = '🟢 Grader available';
+        btn.innerHTML = `${graderIcon(30)}<span>🟢 Grader available</span>`;
       } else {
         const mine = sameName(graderSession.operator, currentOperator);
         btn.classList.add(isGraderStale() ? 'grader-stale' : mine ? 'grader-mine' : 'grader-busy');
         const live = mine ? isSharingLocation() : graderLocationLive();
-        btn.textContent = `🚜 ${mine ? 'You' : graderSession.operator} · ${formatElapsed(graderSession.started_at)}${live ? ' · 📡' : ''}`;
+        btn.innerHTML = `${graderIcon(30)}<span>${escapeHtml(mine ? 'You' : graderSession.operator)} · ${escapeHtml(formatElapsed(graderSession.started_at))}${live ? ' · 📡' : ''}</span>`;
       }
 
       if (document.getElementById('graderModal').style.display === 'flex') renderGraderModal();
@@ -2568,7 +2586,7 @@
 
         if (sameName(graderSession.operator, me)) {
           html = `
-            <div class="grader-status mine">🚜 You're in the grader</div>
+            <div class="grader-status mine">${graderIcon(40)} You're in the grader</div>
             <p>Since ${since} (${elapsed})</p>
             ${staleNote}
             <label class="share-toggle">
@@ -2579,7 +2597,7 @@
             <button class="cab-btn btn-orange" onclick="graderCheckOut()">Check Out</button>`;
         } else {
           html = `
-            <div class="grader-status busy">🚜 ${who} is in the grader</div>
+            <div class="grader-status busy">${graderIcon(40)} ${who} is in the grader</div>
             <p>Since ${since} (${elapsed})</p>
             ${staleNote}
             ${graderLocationLive()
@@ -2684,7 +2702,7 @@
     // =====================================================================
     // LIVE GRADER LOCATION (opt-in)
     // Whoever is checked into the grader can choose to share where it is.
-    // Everyone else sees a 🚜 marker. Only the latest position is stored.
+    // Everyone else sees a grader marker. Only the latest position is stored.
     // =====================================================================
     const LOC_SEND_EVERY_MS = 10000;   // at most one update per 10 s while moving
     const LOC_HEARTBEAT_MS = 60000;    // and at least once a minute when parked
@@ -2798,13 +2816,13 @@
         ? `<div class="gl-arrow" style="transform: rotate(${Number(g.heading).toFixed(0)}deg)"></div>` : '';
       const icon = L.divIcon({
         className: 'grader-loc' + (stale ? ' stale' : ''),
-        html: `${arrow}<div class="gl-dot">🚜</div><div class="gl-name">${escapeHtml(g.operator)}${stale ? ' · ' + escapeHtml(agoText(g.updated_at)) : ''}</div>`,
-        iconSize: [44, 44],
-        iconAnchor: [22, 22]
+        html: `${arrow}<div class="gl-dot">${graderIcon(46)}</div><div class="gl-name">${escapeHtml(g.operator)}${stale ? ' · ' + escapeHtml(agoText(g.updated_at)) : ''}</div>`,
+        iconSize: [60, 40],
+        iconAnchor: [30, 20]
       });
       const popup = `
         <div class="popup-container">
-          <div class="popup-title">🚜 ${escapeHtml(g.operator)}</div>
+          <div class="popup-title">${graderIcon(36)} ${escapeHtml(g.operator)}</div>
           <div class="popup-meta">
             Updated <strong>${escapeHtml(agoText(g.updated_at))}</strong>${stale ? ' (may have lost signal)' : ''}<br>
             ${moving ? `Moving about <strong>${Number(g.speed_mph).toFixed(0)} mph</strong>` : 'Stopped'}
