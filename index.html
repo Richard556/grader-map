@@ -300,14 +300,17 @@
       display: block;
       white-space: nowrap;
       transform-origin: 50% 50%;
-      font-size: 12px;
-      font-weight: 600;
-      letter-spacing: 0.02em;
+      font-size: 13px;
+      font-weight: 800;
+      letter-spacing: 0.03em;
       color: #ffffff;
+      /* Solid black ring around every letter: readable in direct sun on any background */
       text-shadow:
-        0 0 2px rgba(0, 0, 0, 0.95),
-        0 0 4px rgba(0, 0, 0, 0.85),
-        0 1px 3px rgba(0, 0, 0, 0.9);
+        -2px -2px 0 #000, 0 -2px 0 #000, 2px -2px 0 #000,
+        -2px 0 0 #000, 2px 0 0 #000,
+        -2px 2px 0 #000, 0 2px 0 #000, 2px 2px 0 #000,
+        -1px -1px 0 #000, 1px 1px 0 #000, -1px 1px 0 #000, 1px -1px 0 #000,
+        0 0 6px rgba(0, 0, 0, 0.9);
       pointer-events: none;
     }
     .leaflet-tooltip-top:before,
@@ -1291,6 +1294,7 @@
 
     let roadStatuses = {};
     let roadLayers = {};
+    let roadCasings = {};  // dark outline drawn under each road for contrast
     let roadNames = {};
     let hazardMarkers = {};
     let hazardData = {};
@@ -1565,7 +1569,7 @@
         return { color: '#f43f5e', dashArray: null, weight: 8, category: 'not_graded' };
       }
       if (!timestamp || !status || status === 'untouched') {
-        return { color: '#94a3b8', dashArray: '8, 8', weight: 4.5, category: 'untouched' };
+        return { color: '#e2e8f0', dashArray: '9, 7', weight: 4.5, category: 'untouched' };
       }
 
       const daysOld = (new Date() - new Date(timestamp)) / (1000 * 60 * 60 * 24);
@@ -1672,7 +1676,7 @@
         ${row('#eab308', false, `Graded, aging (${greenThresholdDays + 1}–${yellowThresholdDays} days)`, m.buckets.warning)}
         ${row('#ea580c', false, 'Needs work / gravel', m.buckets.gravel)}
         ${row('#dc2626', false, 'Needs graded / overdue', m.buckets.not_graded)}
-        ${row('#94a3b8', true, 'Untouched', m.buckets.untouched)}
+        ${row('#e2e8f0', true, 'Untouched', m.buckets.untouched)}
         <p style="margin-top:12px;">Town streets are not counted.${COUNT_SUBDIVISIONS && m.subdivisionMiles > 0
           ? ` Includes ${m.subdivisionMiles.toFixed(1)} mi of subdivision roads pending township decision.` : ''}</p>`;
     }
@@ -1719,6 +1723,12 @@
           dashArray: visual.dashArray,
           opacity: opacity
         });
+        if (roadCasings[segmentId]) {
+          roadCasings[segmentId].setStyle({
+            weight: visual.weight + 4,
+            opacity: opacity < 0.5 ? 0.05 : 0.8
+          });
+        }
       }
     }
 
@@ -1750,8 +1760,9 @@
     // would overlap another label or repeat the same name close by.
     // Recomputed whenever the map moves or zooms.
     const LABEL_MIN_ZOOM = 11;
-    const LABEL_FONT_PX = 12;
-    const LABEL_CHAR_PX = 7.0;      // rough width per character at 12px semi-bold
+    const LABEL_FONT_PX = 13;
+    const LABEL_CHAR_PX = 8.4;      // rough width per character at 13px heavy
+    const LABEL_OFFSET_PX = 15;     // sit beside the road line, not on top of it
     const LABEL_PAD_PX = 6;         // breathing room between labels
     const LABEL_SAME_NAME_PX = 260; // don't repeat a name closer than this
     map.createPane('roadLabels');
@@ -1849,10 +1860,13 @@
         const slots = Math.max(1, Math.floor(total / (LABEL_SAME_NAME_PX * 0.75)));
         for (let k = 0; k < slots; k++) {
           const at = pointAlong(pts, cum, (k + 0.5) * total / slots);
+          const rad = at.angle * Math.PI / 180;
+          at.x += -Math.sin(rad) * LABEL_OFFSET_PX;
+          at.y += Math.cos(rad) * LABEL_OFFSET_PX;
           if (at.x < 8 || at.y < 8 || at.x > size.x - 8 || at.y > size.y - 8) continue;
           // Prefer the middle of each road, then longer roads
           const centered = 1 - Math.abs((k + 0.5) / slots - 0.5);
-          candidates.push({ id: path.ids[0], text, w, h: LABEL_FONT_PX + 4, anchor: at, score: total * (0.5 + centered) });
+          candidates.push({ id: path.ids[0], text, w, h: LABEL_FONT_PX + 6, anchor: at, score: total * (0.5 + centered) });
         }
       });
 
@@ -3425,7 +3439,14 @@
           }
         }).addTo(map);
 
-        // 2. VISIBLE ROAD LINES LAYER
+        // 2. DARK OUTLINE UNDER EACH ROAD (keeps lines visible in bright sun)
+        L.geoJSON(geojson, {
+          filter: f => !isTownFeature(f),
+          style: () => ({ color: '#0b1220', weight: 8.5, opacity: 0.8, interactive: false, lineCap: 'round' }),
+          onEachFeature: (feature, layer) => { roadCasings[getRoadId(feature.properties)] = layer; }
+        }).addTo(map);
+
+        // 3. VISIBLE ROAD LINES LAYER
         L.geoJSON(geojson, {
           style: f => {
             if (isTownFeature(f)) return Object.assign({ interactive: false }, TOWN_STYLE);
