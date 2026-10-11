@@ -1,7 +1,7 @@
 // Sverdrup Township Road Tracker — offline support
 // Bump APP_VERSION whenever index.html or the road file changes in a way
 // phones should pick up even if they're mostly offline.
-const APP_VERSION = '2026-10-11.2';
+const APP_VERSION = '2026-10-11.3';
 const SHELL_CACHE = 'shell-' + APP_VERSION;
 const TILE_CACHE = 'tiles-v1';           // kept across versions
 const MAX_TILES = 2500;                  // ~ a few dozen MB of satellite imagery
