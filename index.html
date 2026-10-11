@@ -106,6 +106,14 @@
       gap: 6px;
       white-space: nowrap;
     }
+    .dock-btn.sync-btn {
+      border-color: #f59e0b;
+      color: #fbbf24;
+    }
+    .dock-btn.sync-btn.sync-failed {
+      border-color: #dc2626;
+      color: #fca5a5;
+    }
     .dock-btn.active-filter {
       border-color: #f97316;
       color: #f97316;
@@ -340,6 +348,7 @@
   <div class="controls-dock">
     <button id="filterBtn" class="dock-btn" onclick="cycleFilter()">🔍 Filter: All</button>
     <button id="labelBtn" class="dock-btn" onclick="toggleLabels()">🏷️ Labels: OFF</button>
+    <button id="syncBtn" class="dock-btn sync-btn" style="display:none;" onclick="onSyncBadgeTap()"></button>
   </div>
 
   <div id="operatorBadge" class="operator-badge" onclick="openOperatorModal()">
@@ -432,11 +441,11 @@
       </select>
 
       <label>Admin PIN (Required to Reset or Save)</label>
-      <input type="password" id="adminPin" placeholder="Enter PIN (Default: 1234)" />
+      <input type="password" id="adminPin" placeholder="Enter admin PIN" />
 
       <div class="modal-actions">
         <button class="btn-secondary" onclick="closeSettingsModal()">Close</button>
-        <button class="btn-save" onclick="applySettingsAndReset()">Apply / Save</button>
+        <button class="btn-save" id="adminApplyBtn" onclick="applySettingsAndReset()">Apply / Save</button>
       </div>
     </div>
   </div>
@@ -445,13 +454,74 @@
     const SUPABASE_URL = 'https://wzhqsionreajfgihmdco.supabase.co';
     const SUPABASE_ANON_KEY = 'sb_publishable_yY7GZD4mizH_q5DOzvxMFA_b0jkFsp4';
 
-    const clientActive = !SUPABASE_URL.includes('YOUR_SUPABASE_URL');
+    const clientActive = !SUPABASE_URL.includes('YOUR_SUPABASE_URL') && !!window.supabase;
     const dbClient = clientActive ? window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY) : null;
+
+    // --- SMALL HELPERS ---
+    function escapeHtml(value) {
+      return String(value ?? '').replace(/[&<>"']/g, c => ({
+        '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+      }[c]));
+    }
+    // Safe string argument for inline onclick="fn(...)" attributes
+    function jsArg(value) {
+      return escapeHtml(JSON.stringify(String(value ?? '')));
+    }
+    function safeImageUrl(url) {
+      if (!url) return '';
+      const s = String(url);
+      if (/^https:\/\//i.test(s)) return s;
+      if (/^data:image\/(jpeg|png|webp);base64,/i.test(s)) return s;
+      return '';
+    }
+    function newId() {
+      if (window.crypto && crypto.randomUUID) return crypto.randomUUID();
+      return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
+        const r = Math.random() * 16 | 0;
+        return (c === 'x' ? r : (r & 0x3 | 0x8)).toString(16);
+      });
+    }
+    function readJson(key, fallback) {
+      try {
+        const v = localStorage.getItem(key);
+        return v ? JSON.parse(v) : fallback;
+      } catch (e) {
+        return fallback;
+      }
+    }
+    function writeJson(key, value) {
+      try {
+        localStorage.setItem(key, JSON.stringify(value));
+        return true;
+      } catch (e) {
+        console.error('Could not save to device storage:', e);
+        return false;
+      }
+    }
+    function readString(key) {
+      try { return localStorage.getItem(key) || ''; } catch (e) { return ''; }
+    }
+    function blobToDataUrl(blob) {
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result);
+        reader.onerror = reject;
+        reader.readAsDataURL(blob);
+      });
+    }
+    function dataUrlToBlob(dataUrl) {
+      const [header, base64] = dataUrl.split(',');
+      const mime = (header.match(/data:([^;]+)/) || [])[1] || 'image/jpeg';
+      const bytes = atob(base64);
+      const arr = new Uint8Array(bytes.length);
+      for (let i = 0; i < bytes.length; i++) arr[i] = bytes.charCodeAt(i);
+      return new Blob([arr], { type: mime });
+    }
 
     let greenThresholdDays = 21;
     let yellowThresholdDays = 30;
-    let currentOperator = localStorage.getItem('sverdrup_operator') || '';
-    
+    let currentOperator = readString('sverdrup_operator');
+
     let currentFilter = 'all';
     let showLabels = false;
     let activeGpsCoords = null;
@@ -474,12 +544,213 @@
     let roadLayers = {};
     let roadNames = {};
     let hazardMarkers = {};
+    let hazardData = {};
+
+    // =====================================================================
+    // OFFLINE SYNC QUEUE
+    // Every change is saved on the device first, then sent to Supabase.
+    // If there's no signal, it waits and retries automatically.
+    // =====================================================================
+    const QUEUE_KEY = 'sverdrup_sync_queue';
+    const FAILED_KEY = 'sverdrup_sync_failed';
+    const MAX_SERVER_REJECTIONS = 5;
+
+    let syncQueue = readJson(QUEUE_KEY, []);
+    let failedOps = readJson(FAILED_KEY, []);
+    let syncing = false;
+
+    function persistQueue() {
+      return writeJson(QUEUE_KEY, syncQueue) && writeJson(FAILED_KEY, failedOps);
+    }
+
+    function enqueue(op) {
+      op.opId = newId();
+      op.queuedAt = new Date().toISOString();
+      op.rejections = 0;
+      syncQueue.push(op);
+      if (!persistQueue()) {
+        syncQueue.pop();
+        persistQueue();
+        return false;
+      }
+      updateSyncBadge();
+      flushQueue();
+      return true;
+    }
+
+    // A rejection from the server (has a code/status) vs. no connection (doesn't)
+    function isServerRejection(err) {
+      return !!(err && (err.code || err.status || err.statusCode));
+    }
+
+    async function runOp(op) {
+      if (op.type === 'road_status') {
+        // Don't overwrite a newer change someone else made while we were offline
+        const { data: server, error: selErr } = await dbClient
+          .from('road_status').select('*').eq('segment_id', op.segmentId).maybeSingle();
+        if (selErr) throw selErr;
+
+        const serverIsNewer = server && server.updated_at &&
+          new Date(server.updated_at) > new Date(op.changedAt);
+
+        if (serverIsNewer) {
+          if (server.status === 'needs_work') server.status = 'gravel';
+          roadStatuses[op.segmentId] = server;
+          applyStyle(op.segmentId);
+        } else {
+          const { error } = await dbClient.from('road_status').upsert(op.row);
+          if (error) throw error;
+        }
+
+        // History is always recorded, even if a newer change won
+        const { error: logErr } = await dbClient
+          .from('road_status_log')
+          .upsert(op.log, { onConflict: 'id', ignoreDuplicates: true });
+        if (logErr) throw logErr;
+        return;
+      }
+
+      if (op.type === 'hazard_add') {
+        if (op.photoDataUrl && !op.pin.photo_url) {
+          const filePath = `${op.pin.id}.jpg`;
+          const { error: upErr } = await dbClient.storage
+            .from('hazard_photos')
+            .upload(filePath, dataUrlToBlob(op.photoDataUrl), { contentType: 'image/jpeg' });
+          // "already exists" means an earlier attempt got through
+          if (upErr && !/exist|duplicate/i.test(upErr.message || '')) throw upErr;
+          const { data: urlData } = dbClient.storage.from('hazard_photos').getPublicUrl(filePath);
+          op.pin.photo_url = urlData.publicUrl;
+          delete op.photoDataUrl;
+          persistQueue();
+        }
+        const { error } = await dbClient
+          .from('hazard_pins')
+          .upsert(op.pin, { onConflict: 'id', ignoreDuplicates: true });
+        if (error) throw error;
+        return;
+      }
+
+      if (op.type === 'hazard_resolve') {
+        const { error } = await dbClient.from('hazard_pins').delete().eq('id', op.pinId);
+        if (error) throw error;
+        if (op.hadPhoto) {
+          // Photo cleanup is best-effort; a leftover file shouldn't block the queue
+          await dbClient.storage.from('hazard_photos').remove([`${op.pinId}.jpg`]).catch(() => {});
+        }
+        return;
+      }
+
+      console.warn('Unknown queued operation, dropping:', op);
+    }
+
+    async function flushQueue() {
+      if (syncing || !dbClient || syncQueue.length === 0) {
+        updateSyncBadge();
+        return;
+      }
+      syncing = true;
+      updateSyncBadge();
+      try {
+        while (syncQueue.length > 0) {
+          const op = syncQueue[0];
+          try {
+            await runOp(op);
+            syncQueue.shift();
+            persistQueue();
+          } catch (err) {
+            op.lastError = (err && err.message) || String(err);
+            if (isServerRejection(err)) {
+              op.rejections = (op.rejections || 0) + 1;
+              if (op.rejections >= MAX_SERVER_REJECTIONS) {
+                // Park it so one bad item can't hold up everything behind it
+                failedOps.push(syncQueue.shift());
+                persistQueue();
+                continue;
+              }
+            }
+            persistQueue();
+            break; // no signal (or a temporary error) — try again later
+          }
+          updateSyncBadge();
+        }
+      } finally {
+        syncing = false;
+        updateSyncBadge();
+      }
+    }
+
+    function updateSyncBadge() {
+      const btn = document.getElementById('syncBtn');
+      if (!btn) return;
+      const pending = syncQueue.length;
+      const failed = failedOps.length;
+      if (!pending && !failed) {
+        btn.style.display = 'none';
+        return;
+      }
+      btn.style.display = 'flex';
+      btn.classList.toggle('sync-failed', failed > 0);
+      if (failed > 0) {
+        btn.textContent = `⚠️ ${failed} failed to sync`;
+      } else if (syncing) {
+        btn.textContent = `🔄 Syncing ${pending}…`;
+      } else {
+        btn.textContent = `⏳ ${pending} unsynced${navigator.onLine === false ? ' (no signal)' : ''}`;
+      }
+    }
+
+    window.onSyncBadgeTap = function() {
+      if (failedOps.length > 0) {
+        const last = failedOps[failedOps.length - 1];
+        const retry = confirm(
+          `${failedOps.length} change(s) were rejected by the server.\n\n` +
+          `Last error: ${last.lastError || 'unknown'}\n\n` +
+          `Tap OK to try sending them again.`
+        );
+        if (retry) {
+          failedOps.forEach(op => { op.rejections = 0; });
+          syncQueue = syncQueue.concat(failedOps);
+          failedOps = [];
+          persistQueue();
+          flushQueue();
+        }
+        return;
+      }
+      flushQueue();
+    };
+
+    function hasPendingRoadOp(segmentId) {
+      return syncQueue.some(op => op.type === 'road_status' && op.segmentId === segmentId);
+    }
+
+    // Re-apply this device's unsent changes on top of what the server sent
+    function overlayPendingChanges() {
+      syncQueue.forEach(op => {
+        if (op.type === 'road_status') {
+          roadStatuses[op.segmentId] = op.row;
+          applyStyle(op.segmentId);
+        } else if (op.type === 'hazard_add') {
+          renderHazardMarker(Object.assign({}, op.pin, {
+            photo_url: op.pin.photo_url || op.photoDataUrl || null
+          }));
+        } else if (op.type === 'hazard_resolve') {
+          removeHazardMarker(op.pinId);
+        }
+      });
+    }
+
+    window.addEventListener('online', () => flushQueue());
+    window.addEventListener('offline', () => updateSyncBadge());
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible') flushQueue();
+    });
+    setInterval(() => flushQueue(), 20000);
 
     // --- OPERATOR MANAGEMENT ---
     function updateOperatorUI() {
       const badgeText = document.getElementById('currentOperatorName');
       if (currentOperator) {
-        badgeText.innerHTML = `${currentOperator} <span>(Switch)</span>`;
+        badgeText.innerHTML = `${escapeHtml(currentOperator)} <span>(Switch)</span>`;
       } else {
         badgeText.innerHTML = `Set Driver <span>(Tap)</span>`;
       }
@@ -491,11 +762,11 @@
       const container = document.getElementById('existingOperatorContainer');
       const input = document.getElementById('operatorInput');
 
-      let savedDrivers = JSON.parse(localStorage.getItem('sverdrup_known_operators') || '[]');
+      const savedDrivers = readJson('sverdrup_known_operators', []);
       if (savedDrivers.length > 0) {
         container.style.display = 'block';
-        select.innerHTML = '<option value="">-- Choose Existing Driver --</option>' + 
-          savedDrivers.map(d => `<option value="${d}">${d}</option>`).join('');
+        select.innerHTML = '<option value="">-- Choose Existing Driver --</option>' +
+          savedDrivers.map(d => `<option value="${escapeHtml(d)}">${escapeHtml(d)}</option>`).join('');
       } else {
         container.style.display = 'none';
       }
@@ -517,12 +788,12 @@
         return;
       }
       currentOperator = name;
-      localStorage.setItem('sverdrup_operator', name);
+      try { localStorage.setItem('sverdrup_operator', name); } catch (e) {}
 
-      let savedDrivers = JSON.parse(localStorage.getItem('sverdrup_known_operators') || '[]');
+      const savedDrivers = readJson('sverdrup_known_operators', []);
       if (!savedDrivers.includes(name)) {
         savedDrivers.push(name);
-        localStorage.setItem('sverdrup_known_operators', JSON.stringify(savedDrivers));
+        writeJson('sverdrup_known_operators', savedDrivers);
       }
 
       updateOperatorUI();
@@ -574,8 +845,8 @@
     function applyStyle(segmentId) {
       const current = roadStatuses[segmentId];
       if (roadLayers[segmentId]) {
-        const visual = current 
-          ? calculateRoadVisual(current.status, current.updated_at) 
+        const visual = current
+          ? calculateRoadVisual(current.status, current.updated_at)
           : calculateRoadVisual(null, null);
 
         let opacity = 0.95;
@@ -629,7 +900,7 @@
         const name = roadNames[id];
         if (showLabels) {
           if (!layer.getTooltip()) {
-            layer.bindTooltip(name, {
+            layer.bindTooltip(escapeHtml(name), {
               permanent: true,
               direction: 'center',
               className: 'road-label'
@@ -644,38 +915,59 @@
       });
     };
 
+    function applySettingsRow(row) {
+      if (!row) return;
+      const g = parseInt(row.green_days, 10);
+      const y = parseInt(row.yellow_days, 10);
+      if (g > 0 && y > g) {
+        greenThresholdDays = g;
+        yellowThresholdDays = y;
+        document.getElementById('inputGreenDays').value = g;
+        document.getElementById('inputYellowDays').value = y;
+        redrawAllRoads();
+      }
+    }
+
     async function loadSettings() {
       if (!dbClient) return;
       try {
-        const { data } = await dbClient.from('township_settings').select('*').eq('id', 'cycle_config').single();
-        if (data) {
-          greenThresholdDays = data.green_days;
-          yellowThresholdDays = data.yellow_days;
-          document.getElementById('inputGreenDays').value = data.green_days;
-          document.getElementById('inputYellowDays').value = data.yellow_days;
-        }
+        const { data, error } = await dbClient
+          .from('township_settings').select('*').eq('id', 'cycle_config').maybeSingle();
+        if (error) throw error;
+        applySettingsRow(data);
       } catch (err) {
-        console.log('Using default cycle thresholds.');
+        console.log('Using default cycle thresholds.', err);
       }
     }
 
     async function fetchStatuses() {
       if (!dbClient) return;
       const { data, error } = await dbClient.from('road_status').select('*');
-      if (data && !error) {
-        data.forEach(row => {
-          if (row.status === 'needs_work') row.status = 'gravel';
-          roadStatuses[row.segment_id] = row;
-          applyStyle(row.segment_id);
-        });
+      if (error) {
+        console.error('Could not load road statuses:', error);
+        return;
       }
+      data.forEach(row => {
+        if (row.status === 'needs_work') row.status = 'gravel';
+        roadStatuses[row.segment_id] = row;
+        applyStyle(row.segment_id);
+      });
     }
 
     // --- HAZARD PIN SYSTEM ---
+    function removeHazardMarker(pinId) {
+      if (hazardMarkers[pinId]) {
+        map.removeLayer(hazardMarkers[pinId]);
+        delete hazardMarkers[pinId];
+      }
+      delete hazardData[pinId];
+    }
+
     function renderHazardMarker(pin) {
       if (hazardMarkers[pin.id]) {
         map.removeLayer(hazardMarkers[pin.id]);
       }
+      hazardData[pin.id] = pin;
 
       const icon = L.divIcon({
         className: 'hazard-pin-icon',
@@ -687,17 +979,18 @@
       hazardMarkers[pin.id] = marker;
 
       const dateStr = pin.created_at ? new Date(pin.created_at).toLocaleDateString() : '';
-      const photoHtml = pin.photo_url 
-        ? `<div style="margin-top:8px;"><img src="${pin.photo_url}" style="width:100%; border-radius:6px; max-height:180px; object-fit:cover;" /></div>` 
+      const photoSrc = safeImageUrl(pin.photo_url);
+      const photoHtml = photoSrc
+        ? `<div style="margin-top:8px;"><img src="${escapeHtml(photoSrc)}" style="width:100%; border-radius:6px; max-height:180px; object-fit:cover;" /></div>`
         : '';
 
       const popupHtml = `
         <div class="popup-container">
-          <div class="popup-title" style="color:#f59e0b;">⚠️ ${pin.hazard_type}</div>
-          <div class="popup-meta">Reported: <strong>${dateStr}</strong> by <strong>${pin.created_by || 'Unknown'}</strong></div>
-          <div style="font-size:14px; margin-bottom:8px; color:#f1f5f9;">${pin.notes || 'No description provided.'}</div>
+          <div class="popup-title" style="color:#f59e0b;">⚠️ ${escapeHtml(pin.hazard_type)}</div>
+          <div class="popup-meta">Reported: <strong>${escapeHtml(dateStr)}</strong> by <strong>${escapeHtml(pin.created_by || 'Unknown')}</strong></div>
+          <div style="font-size:14px; margin-bottom:8px; color:#f1f5f9;">${escapeHtml(pin.notes || 'No description provided.')}</div>
           ${photoHtml}
-          <button class="cab-btn btn-green" style="margin-top:10px;" onclick="resolveHazard('${pin.id}', '${pin.photo_url || ''}')">Mark Resolved (Delete)</button>
+          <button class="cab-btn btn-green" style="margin-top:10px;" onclick="resolveHazard(${jsArg(pin.id)})">Mark Resolved (Delete)</button>
         </div>
       `;
       marker.bindPopup(popupHtml);
@@ -706,9 +999,11 @@
     async function fetchHazards() {
       if (!dbClient) return;
       const { data, error } = await dbClient.from('hazard_pins').select('*');
-      if (data && !error) {
-        data.forEach(pin => renderHazardMarker(pin));
+      if (error) {
+        console.error('Could not load hazard pins:', error);
+        return;
       }
+      data.forEach(pin => renderHazardMarker(pin));
     }
 
     window.startHazardReport = function() {
@@ -716,7 +1011,7 @@
         cancelHazardPlacement();
         return;
       }
-      
+
       if (activeGpsCoords) {
         if (confirm("Drop hazard pin at your current cab location?\n\n(Tap Cancel to tap on map/road instead)")) {
           pendingHazardCoords = activeGpsCoords;
@@ -795,7 +1090,8 @@
             ctx.drawImage(img, 0, 0, width, height);
 
             canvas.toBlob(blob => {
-              resolve(blob);
+              if (blob) resolve(blob);
+              else reject(new Error('Image compression failed'));
             }, 'image/jpeg', 0.75);
           };
           img.onerror = err => reject(err);
@@ -822,42 +1118,46 @@
         const hazardType = document.getElementById('hazardCategory').value;
         const notes = document.getElementById('hazardNotes').value.trim();
         const fileInput = document.getElementById('hazardCameraInput');
-        const pinId = 'pin_' + Date.now();
-        let photoUrl = null;
+        const pinId = 'pin_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6);
 
+        let photoDataUrl = null;
         if (fileInput.files && fileInput.files[0]) {
-          const compressedBlob = await compressImage(fileInput.files[0]);
-          const filePath = `${pinId}.jpg`;
-
-          const { error: uploadError } = await dbClient.storage
-            .from('hazard_photos')
-            .upload(filePath, compressedBlob, { contentType: 'image/jpeg' });
-
-          if (!uploadError) {
-            const { data: publicUrlData } = dbClient.storage
-              .from('hazard_photos')
-              .getPublicUrl(filePath);
-            photoUrl = publicUrlData.publicUrl;
+          try {
+            const compressedBlob = await compressImage(fileInput.files[0]);
+            photoDataUrl = await blobToDataUrl(compressedBlob);
+          } catch (imgErr) {
+            console.error('Photo processing failed:', imgErr);
+            alert('The photo could not be processed. The hazard will be saved without it.');
           }
         }
 
-        const newPin = {
+        const pin = {
           id: pinId,
           lat: pendingHazardCoords[0],
           lng: pendingHazardCoords[1],
           hazard_type: hazardType,
           notes: notes,
-          photo_url: photoUrl,
+          photo_url: null,
           created_by: currentOperator,
           created_at: new Date().toISOString()
         };
 
-        renderHazardMarker(newPin);
-        closeHazardModal();
-
-        if (dbClient) {
-          await dbClient.from('hazard_pins').insert(newPin);
+        let queued = enqueue({ type: 'hazard_add', pin: pin, photoDataUrl: photoDataUrl });
+        if (!queued && photoDataUrl) {
+          // Device storage is full — keep the hazard, drop the photo
+          queued = enqueue({ type: 'hazard_add', pin: pin, photoDataUrl: null });
+          if (queued) {
+            alert('Device storage is full, so the photo could not be kept. The hazard was saved without it.');
+            photoDataUrl = null;
+          }
         }
+        if (!queued) {
+          alert('Could not save the hazard on this device (storage full).');
+          return;
+        }
+
+        renderHazardMarker(Object.assign({}, pin, { photo_url: photoDataUrl }));
+        closeHazardModal();
       } catch (err) {
         console.error('Error saving hazard:', err);
         alert('Error saving hazard.');
@@ -867,21 +1167,23 @@
       }
     };
 
-    window.resolveHazard = async function(pinId, photoUrl) {
-      if (confirm('Mark this hazard resolved and remove it from the map?')) {
-        if (hazardMarkers[pinId]) {
-          map.removeLayer(hazardMarkers[pinId]);
-          delete hazardMarkers[pinId];
-        }
+    window.resolveHazard = function(pinId) {
+      if (!confirm('Mark this hazard resolved and remove it from the map?')) return;
 
-        if (dbClient) {
-          await dbClient.from('hazard_pins').delete().eq('id', pinId);
-          if (photoUrl) {
-            const fileName = `${pinId}.jpg`;
-            await dbClient.storage.from('hazard_photos').remove([fileName]);
-          }
-        }
+      const pin = hazardData[pinId];
+      map.closePopup();
+      removeHazardMarker(pinId);
+
+      // If it never reached the server, just cancel the pending upload
+      const pendingIdx = syncQueue.findIndex(op => op.type === 'hazard_add' && op.pin.id === pinId);
+      if (pendingIdx >= 0 && !(syncing && pendingIdx === 0)) {
+        syncQueue.splice(pendingIdx, 1);
+        persistQueue();
+        updateSyncBadge();
+        return;
       }
+
+      enqueue({ type: 'hazard_resolve', pinId: pinId, hadPhoto: !!(pin && pin.photo_url) || pendingIdx >= 0 });
     };
 
     // --- INSTANT REALTIME WEBSOCKET SYNC ---
@@ -894,6 +1196,8 @@
           payload => {
             const row = payload.new;
             if (row && row.segment_id) {
+              // This device has an unsent change for this road — keep showing ours
+              if (hasPendingRoadOp(row.segment_id)) return;
               if (row.status === 'needs_work') row.status = 'gravel';
               roadStatuses[row.segment_id] = row;
               applyStyle(row.segment_id);
@@ -905,17 +1209,33 @@
           { event: '*', schema: 'public', table: 'hazard_pins' },
           payload => {
             if (payload.eventType === 'INSERT') {
-              renderHazardMarker(payload.new);
+              const resolvedHere = syncQueue.some(op => op.type === 'hazard_resolve' && op.pinId === payload.new.id);
+              if (!resolvedHere) renderHazardMarker(payload.new);
             } else if (payload.eventType === 'DELETE') {
-              const oldId = payload.old.id;
-              if (hazardMarkers[oldId]) {
-                map.removeLayer(hazardMarkers[oldId]);
-                delete hazardMarkers[oldId];
-              }
+              if (payload.old && payload.old.id) removeHazardMarker(payload.old.id);
             }
           }
         )
-        .subscribe();
+        .on(
+          'postgres_changes',
+          { event: '*', schema: 'public', table: 'township_settings' },
+          payload => {
+            if (payload.new && payload.new.id === 'cycle_config') applySettingsRow(payload.new);
+          }
+        )
+        .subscribe(status => {
+          // After a dropped connection, catch up on anything we missed
+          if (status === 'SUBSCRIBED' && Object.keys(roadLayers).length > 0) {
+            refreshFromServer();
+          }
+        });
+    }
+
+    async function refreshFromServer() {
+      await loadSettings();
+      await fetchStatuses();
+      await fetchHazards();
+      overlayPendingChanges();
     }
 
     // --- LOAD ROADS ---
@@ -925,10 +1245,6 @@
         return res.json();
       })
       .then(async geojson => {
-        await loadSettings();
-        await fetchStatuses();
-        await fetchHazards();
-
         // 1. INVISIBLE WIDE HITBOX LAYER (34px wide)
         L.geoJSON(geojson, {
           style: () => ({
@@ -954,12 +1270,8 @@
 
         // 2. VISIBLE ROAD LINES LAYER
         L.geoJSON(geojson, {
-          style: feature => {
-            const id = getRoadId(feature.properties);
-            const current = roadStatuses[id];
-            const visual = current 
-              ? calculateRoadVisual(current.status, current.updated_at) 
-              : calculateRoadVisual(null, null);
+          style: () => {
+            const visual = calculateRoadVisual(null, null);
             return {
               color: visual.color,
               weight: visual.weight,
@@ -983,104 +1295,136 @@
 
               const current = roadStatuses[id] || {};
               const lastDate = current.updated_at ? new Date(current.updated_at).toLocaleDateString() : 'Never';
-              const operatorInfo = current.updated_by ? ` by <strong>${current.updated_by}</strong>` : '';
-              const lastNote = current.notes ? `<div class="popup-meta"><strong>Note:</strong> ${current.notes}</div>` : '';
+              const operatorInfo = current.updated_by ? ` by <strong>${escapeHtml(current.updated_by)}</strong>` : '';
+              const lastNote = current.notes ? `<div class="popup-meta"><strong>Note:</strong> ${escapeHtml(current.notes)}</div>` : '';
+              const pendingInfo = hasPendingRoadOp(id) ? `<div class="popup-meta" style="color:#f59e0b;">⏳ Not synced yet — will send when signal returns</div>` : '';
+              const idArg = jsArg(id);
 
               const popupHtml = `
                 <div class="popup-container">
-                  <div class="popup-title">${name}</div>
-                  <div class="popup-meta">Last Done: <strong>${lastDate}</strong>${operatorInfo}</div>
+                  <div class="popup-title">${escapeHtml(name)}</div>
+                  <div class="popup-meta">Last Done: <strong>${escapeHtml(lastDate)}</strong>${operatorInfo}</div>
                   ${lastNote}
-                  <input type="text" id="note_${id}" class="note-input" placeholder="Notes (tons, washouts, etc.)" />
-                  <button class="cab-btn btn-green" onclick="saveStatus('${id}', 'graded')">Done (Graded)</button>
-                  <button class="cab-btn btn-orange" onclick="saveStatus('${id}', 'gravel')">Needs Work / Gravel</button>
-                  <button class="cab-btn btn-red" onclick="saveStatus('${id}', 'not_graded')">Needs Graded</button>
-                  <button class="cab-btn btn-gray" onclick="saveStatus('${id}', 'untouched')">Reset to Untouched (Gray)</button>
+                  ${pendingInfo}
+                  <input type="text" id="note_${escapeHtml(id)}" class="note-input" placeholder="Notes (tons, washouts, etc.)" />
+                  <button class="cab-btn btn-green" onclick="saveStatus(${idArg}, 'graded')">Done (Graded)</button>
+                  <button class="cab-btn btn-orange" onclick="saveStatus(${idArg}, 'gravel')">Needs Work / Gravel</button>
+                  <button class="cab-btn btn-red" onclick="saveStatus(${idArg}, 'not_graded')">Needs Graded</button>
+                  <button class="cab-btn btn-gray" onclick="saveStatus(${idArg}, 'untouched')">Reset to Untouched (Gray)</button>
                 </div>
               `;
               layer.bindPopup(popupHtml).openPopup();
             });
           }
         }).addTo(map);
+
+        // Show this device's unsent changes right away, then load the server state
+        overlayPendingChanges();
+        await refreshFromServer();
+        updateSyncBadge();
+        flushQueue();
       })
       .catch(err => console.error('Error loading geojson:', err));
 
-    window.saveStatus = async function(segmentId, newStatus) {
+    window.saveStatus = function(segmentId, newStatus) {
       if (!currentOperator && newStatus !== 'untouched') {
         openOperatorModal();
         return;
       }
 
+      const isReset = newStatus === 'untouched';
       const noteInput = document.getElementById(`note_${segmentId}`);
-      const notes = (newStatus === 'untouched') ? '' : (noteInput ? noteInput.value : '');
-      const now = (newStatus === 'untouched') ? null : new Date().toISOString();
-      const by = (newStatus === 'untouched') ? null : currentOperator;
+      const notes = isReset ? '' : (noteInput ? noteInput.value.trim() : '');
+      const changedAt = new Date().toISOString();
 
-      roadStatuses[segmentId] = {
+      const row = {
         segment_id: segmentId,
         status: newStatus,
-        updated_at: now,
-        updated_by: by,
+        updated_at: isReset ? null : changedAt,
+        updated_by: isReset ? null : currentOperator,
         notes: notes
       };
 
+      const queued = enqueue({
+        type: 'road_status',
+        segmentId: segmentId,
+        changedAt: changedAt,
+        row: row,
+        log: {
+          id: newId(),
+          segment_id: segmentId,
+          road_name: roadNames[segmentId] || null,
+          status: newStatus,
+          notes: notes,
+          changed_by: currentOperator || null,
+          changed_at: changedAt,
+          source: 'manual'
+        }
+      });
+
+      if (!queued) {
+        alert('Could not save this change on the device (storage full). Please try again.');
+        return;
+      }
+
+      roadStatuses[segmentId] = row;
       applyStyle(segmentId);
       map.closePopup();
-
-      if (dbClient) {
-        await dbClient.from('road_status').upsert({
-          segment_id: segmentId,
-          status: newStatus,
-          updated_at: now,
-          updated_by: by,
-          notes: notes
-        });
-      }
     };
 
     // --- GPS CONTROLLER ---
     let watchId = null;
     let userMarker = null;
 
-    window.toggleGPS = function() {
-      const btn = document.getElementById('gpsToggle');
+    function stopGPS() {
       if (watchId !== null) {
         navigator.geolocation.clearWatch(watchId);
         watchId = null;
-        activeGpsCoords = null;
-        if (userMarker) {
-          map.removeLayer(userMarker);
-          userMarker = null;
-        }
-        btn.classList.remove('tracking');
-      } else {
-        if (!navigator.geolocation) {
-          alert('GPS is not supported on this device.');
-          return;
-        }
-        btn.classList.add('tracking');
-        watchId = navigator.geolocation.watchPosition(
-          pos => {
-            const lat = pos.coords.latitude;
-            const lng = pos.coords.longitude;
-            activeGpsCoords = [lat, lng];
-
-            if (!userMarker) {
-              const icon = L.divIcon({ className: 'gps-marker-pulse', iconSize: [16, 16] });
-              userMarker = L.marker(activeGpsCoords, { icon: icon }).addTo(map);
-              map.setView(activeGpsCoords, 14);
-            } else {
-              userMarker.setLatLng(activeGpsCoords);
-            }
-          },
-          err => {
-            alert('Enable location permissions on your browser to view your cab position.');
-            btn.classList.remove('tracking');
-            watchId = null;
-          },
-          { enableHighAccuracy: true }
-        );
       }
+      activeGpsCoords = null;
+      if (userMarker) {
+        map.removeLayer(userMarker);
+        userMarker = null;
+      }
+      document.getElementById('gpsToggle').classList.remove('tracking');
+    }
+
+    window.toggleGPS = function() {
+      const btn = document.getElementById('gpsToggle');
+      if (watchId !== null) {
+        stopGPS();
+        return;
+      }
+      if (!navigator.geolocation) {
+        alert('GPS is not supported on this device.');
+        return;
+      }
+      btn.classList.add('tracking');
+      watchId = navigator.geolocation.watchPosition(
+        pos => {
+          const lat = pos.coords.latitude;
+          const lng = pos.coords.longitude;
+          activeGpsCoords = [lat, lng];
+
+          if (!userMarker) {
+            const icon = L.divIcon({ className: 'gps-marker-pulse', iconSize: [16, 16] });
+            userMarker = L.marker(activeGpsCoords, { icon: icon }).addTo(map);
+            map.setView(activeGpsCoords, 14);
+          } else {
+            userMarker.setLatLng(activeGpsCoords);
+          }
+        },
+        err => {
+          if (err.code === err.PERMISSION_DENIED) {
+            alert('Enable location permissions on your browser to view your cab position.');
+            stopGPS();
+          } else {
+            // Weak signal or timeout — keep tracking, it usually recovers
+            console.warn('GPS:', err.message);
+          }
+        },
+        { enableHighAccuracy: true, maximumAge: 5000, timeout: 20000 }
+      );
     };
 
     // --- MODAL & MENU HANDLERS ---
@@ -1111,17 +1455,25 @@
 
     window.applySettingsAndReset = async function() {
       const pin = document.getElementById('adminPin').value;
-      if (pin !== '1234') {
-        alert('Incorrect Admin PIN.');
+      if (!pin) {
+        alert('Enter the admin PIN.');
+        return;
+      }
+      if (!dbClient || navigator.onLine === false) {
+        alert('Admin changes need a data connection. Try again when you have signal.');
         return;
       }
 
-      greenThresholdDays = parseInt(document.getElementById('inputGreenDays').value, 10) || 21;
-      yellowThresholdDays = parseInt(document.getElementById('inputYellowDays').value, 10) || 30;
+      const newGreen = parseInt(document.getElementById('inputGreenDays').value, 10) || 21;
+      const newYellow = parseInt(document.getElementById('inputYellowDays').value, 10) || 30;
+      if (newYellow <= newGreen) {
+        alert('Yellow days must be more than green days.');
+        return;
+      }
 
       const resetType = document.getElementById('resetTypeSelect').value;
       const now = new Date();
-      const rowsToUpdate = [];
+      const resetIds = [];
 
       Object.keys(roadLayers).forEach(id => {
         const cur = roadStatuses[id];
@@ -1131,32 +1483,47 @@
           shouldReset = true;
         } else if (cur && cur.updated_at) {
           const daysOld = (now - new Date(cur.updated_at)) / (1000 * 60 * 60 * 24);
-          if (resetType === 'older_than_green' && daysOld > greenThresholdDays) shouldReset = true;
-          if (resetType === 'older_than_yellow' && daysOld > yellowThresholdDays) shouldReset = true;
+          if (resetType === 'older_than_green' && daysOld > newGreen) shouldReset = true;
+          if (resetType === 'older_than_yellow' && daysOld > newYellow) shouldReset = true;
         }
-
-        if (shouldReset) {
-          roadStatuses[id] = { segment_id: id, status: 'untouched', updated_at: null, updated_by: null, notes: '' };
-          rowsToUpdate.push(roadStatuses[id]);
-        }
+        if (shouldReset) resetIds.push(id);
       });
 
-      redrawAllRoads();
+      const applyBtn = document.getElementById('adminApplyBtn');
+      applyBtn.disabled = true;
+      applyBtn.innerText = 'Applying...';
 
-      if (dbClient) {
-        await dbClient.from('township_settings').upsert({
-          id: 'cycle_config',
-          green_days: greenThresholdDays,
-          yellow_days: yellowThresholdDays
+      try {
+        const { error } = await dbClient.rpc('admin_apply', {
+          p_pin: pin,
+          p_green: newGreen,
+          p_yellow: newYellow,
+          p_reset_ids: resetIds,
+          p_by: currentOperator || null
         });
 
-        if (rowsToUpdate.length > 0) {
-          await dbClient.from('road_status').upsert(rowsToUpdate);
+        if (error) {
+          if (/invalid_pin/.test(error.message || '')) {
+            alert('Incorrect Admin PIN.');
+          } else {
+            alert('Could not apply settings: ' + (error.message || 'unknown error'));
+          }
+          return;
         }
-      }
 
-      alert(`Updated: Green < ${greenThresholdDays}d, Yellow < ${yellowThresholdDays}d. Settings applied.`);
-      closeSettingsModal();
+        greenThresholdDays = newGreen;
+        yellowThresholdDays = newYellow;
+        resetIds.forEach(id => {
+          roadStatuses[id] = { segment_id: id, status: 'untouched', updated_at: null, updated_by: null, notes: '' };
+        });
+        redrawAllRoads();
+
+        alert(`Updated: Green ≤ ${newGreen}d, Yellow ≤ ${newYellow}d. ${resetIds.length} road segment(s) reset.`);
+        closeSettingsModal();
+      } finally {
+        applyBtn.disabled = false;
+        applyBtn.innerText = 'Apply / Save';
+      }
     };
   </script>
 </body>
