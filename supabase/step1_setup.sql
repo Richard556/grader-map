@@ -30,6 +30,9 @@ create table if not exists public.road_status_log (
   source      text not null default 'manual'       -- manual | reset | auto
 );
 
+-- New tables in this project aren't exposed to the app automatically
+grant select, insert on table public.road_status_log to anon, authenticated;
+
 create index if not exists road_status_log_changed_at_idx on public.road_status_log (changed_at);
 create index if not exists road_status_log_segment_idx   on public.road_status_log (segment_id);
 
