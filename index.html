@@ -293,16 +293,22 @@
     }
 
     /* Road Name Labels */
-    .road-label {
-      background: rgba(15, 23, 42, 0.85);
-      border: 1px solid #475569;
-      color: #f8fafc;
-      font-size: 11px;
-      font-weight: 700;
-      padding: 2px 6px;
-      border-radius: 4px;
-      box-shadow: 0 2px 6px rgba(0,0,0,0.5);
+    .road-name span {
+      position: absolute;
+      left: 0;
+      top: 0;
+      display: block;
       white-space: nowrap;
+      transform-origin: 50% 50%;
+      font-size: 12px;
+      font-weight: 600;
+      letter-spacing: 0.02em;
+      color: #ffffff;
+      text-shadow:
+        0 0 2px rgba(0, 0, 0, 0.95),
+        0 0 4px rgba(0, 0, 0, 0.85),
+        0 1px 3px rgba(0, 0, 0, 0.9);
+      pointer-events: none;
     }
     .leaflet-tooltip-top:before,
     .leaflet-tooltip-bottom:before,
@@ -1739,32 +1745,173 @@
       redrawAllRoads();
     };
 
-    // --- CLEAN LABELS TOGGLE ---
+    // --- ROAD LABELS ---
+    // One label per stretch of road, written along the road, skipped when it
+    // would overlap another label or repeat the same name close by.
+    // Recomputed whenever the map moves or zooms.
+    const LABEL_MIN_ZOOM = 11;
+    const LABEL_FONT_PX = 12;
+    const LABEL_CHAR_PX = 7.0;      // rough width per character at 12px semi-bold
+    const LABEL_PAD_PX = 6;         // breathing room between labels
+    const LABEL_SAME_NAME_PX = 260; // don't repeat a name closer than this
+    map.createPane('roadLabels');
+    map.getPane('roadLabels').style.zIndex = 450;
+    map.getPane('roadLabels').style.pointerEvents = 'none';
+    const labelLayer = L.layerGroup();
+    let labelTimer = null;
+
+    function niceRoadName(name) {
+      return String(name || '')
+        .toLowerCase()
+        .replace(/\b([a-z])/g, c => c.toUpperCase())
+        .replace(/\b(\d+)(St|Nd|Rd|Th)\b/g, (m, n, suf) => n + suf.toLowerCase())
+        .replace(/^([NSEW]) /, (m, d) => d + ' ');
+    }
+
+    // Join each road's one-mile pieces into continuous lines so a name can
+    // sit anywhere along the whole road. Built once, after the roads load.
+    let labelPaths = [];
+    function buildLabelPaths() {
+      const key = ll => ll.lat.toFixed(6) + ',' + ll.lng.toFixed(6);
+      const byName = {};
+      Object.keys(roadLayers).forEach(id => {
+        if (isTownStreet(id)) return;
+        const pts = roadLayers[id].getLatLngs().flat(3);
+        if (pts.length < 2) return;
+        (byName[roadNames[id]] = byName[roadNames[id]] || []).push({ id, pts });
+      });
+      labelPaths = [];
+      Object.keys(byName).forEach(name => {
+        const segs = byName[name];
+        const used = new Set();
+        const ends = {};
+        segs.forEach((sg, i) => {
+          [key(sg.pts[0]), key(sg.pts[sg.pts.length - 1])].forEach(k => { (ends[k] = ends[k] || []).push(i); });
+        });
+        const nextFrom = (k, skip) => (ends[k] || []).find(i => !used.has(i) && i !== skip);
+        // Start from loose ends first so each path runs end to end
+        const order = segs.map((_, i) => i).sort((a, b) => {
+          const loose = i => (ends[key(segs[i].pts[0])].length === 1 || ends[key(segs[i].pts[segs[i].pts.length - 1])].length === 1) ? 0 : 1;
+          return loose(a) - loose(b);
+        });
+        order.forEach(start => {
+          if (used.has(start)) return;
+          used.add(start);
+          let path = segs[start].pts.slice();
+          if (ends[key(path[0])].length > 1 && ends[key(path[path.length - 1])].length === 1) path.reverse();
+          const ids = [segs[start].id];
+          for (;;) {
+            const nxt = nextFrom(key(path[path.length - 1]));
+            if (nxt === undefined) break;
+            used.add(nxt);
+            let pts = segs[nxt].pts;
+            if (key(pts[0]) !== key(path[path.length - 1])) pts = pts.slice().reverse();
+            path = path.concat(pts.slice(1));
+            ids.push(segs[nxt].id);
+          }
+          labelPaths.push({ name, ids, latlngs: path, bounds: L.latLngBounds(path) });
+        });
+      });
+    }
+
+    // Point + direction at a given distance along a screen-space polyline
+    function pointAlong(pts, cum, dist) {
+      let i = 1;
+      while (i < cum.length - 1 && cum[i] < dist) i++;
+      const a = pts[i - 1], b = pts[i];
+      const seg = cum[i] - cum[i - 1];
+      const t = seg ? (dist - cum[i - 1]) / seg : 0;
+      let angle = Math.atan2(b.y - a.y, b.x - a.x) * 180 / Math.PI;
+      if (angle > 90) angle -= 180;   // keep text upright
+      if (angle < -90) angle += 180;
+      return { x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t, angle };
+    }
+
+    function renderRoadLabels() {
+      labelLayer.clearLayers();
+      labelLayer.placed = [];
+      if (!showLabels || map.getZoom() < LABEL_MIN_ZOOM) return;
+      if (!labelPaths.length) buildLabelPaths();
+
+      const size = map.getSize();
+      const view = map.getBounds().pad(0.1);
+      const candidates = [];
+      labelPaths.forEach(path => {
+        if (!view.intersects(path.bounds)) return;
+        const pts = path.latlngs.map(ll => map.latLngToContainerPoint(ll));
+        const cum = [0];
+        for (let i = 1; i < pts.length; i++) cum.push(cum[i - 1] + pts[i].distanceTo(pts[i - 1]));
+        const total = cum[cum.length - 1];
+        const text = niceRoadName(path.name);
+        const w = text.length * LABEL_CHAR_PX + 4;
+        if (total < w + 16) return;  // whole road too short on screen for its name
+        // Several spots along long roads; collisions decide which survive
+        const slots = Math.max(1, Math.floor(total / (LABEL_SAME_NAME_PX * 0.75)));
+        for (let k = 0; k < slots; k++) {
+          const at = pointAlong(pts, cum, (k + 0.5) * total / slots);
+          if (at.x < 8 || at.y < 8 || at.x > size.x - 8 || at.y > size.y - 8) continue;
+          // Prefer the middle of each road, then longer roads
+          const centered = 1 - Math.abs((k + 0.5) / slots - 0.5);
+          candidates.push({ id: path.ids[0], text, w, h: LABEL_FONT_PX + 4, anchor: at, score: total * (0.5 + centered) });
+        }
+      });
+
+      candidates.sort((a, b) => b.score - a.score);
+
+      // Treat the on-screen buttons as already taken so labels don't hide under them
+      const mapRect = map.getContainer().getBoundingClientRect();
+      const placed = [];
+      document.querySelectorAll('.controls-dock, .fab-dock, .admin-menu-btn, .operator-badge, #abChip').forEach(el => {
+        if (el.hidden || el.offsetParent === null) return;
+        const r = el.getBoundingClientRect();
+        placed.push({ ui: true, text: '', anchor: { x: -1e6, y: -1e6 },
+          box: { x1: r.left - mapRect.left, x2: r.right - mapRect.left, y1: r.top - mapRect.top, y2: r.bottom - mapRect.top } });
+      });
+      candidates.forEach(c => {
+        const rad = c.anchor.angle * Math.PI / 180;
+        const bw = Math.abs(c.w * Math.cos(rad)) + Math.abs(c.h * Math.sin(rad));
+        const bh = Math.abs(c.w * Math.sin(rad)) + Math.abs(c.h * Math.cos(rad));
+        const box = {
+          x1: c.anchor.x - bw / 2 - LABEL_PAD_PX, x2: c.anchor.x + bw / 2 + LABEL_PAD_PX,
+          y1: c.anchor.y - bh / 2 - LABEL_PAD_PX, y2: c.anchor.y + bh / 2 + LABEL_PAD_PX
+        };
+        const clash = placed.some(p =>
+          (box.x1 < p.box.x2 && box.x2 > p.box.x1 && box.y1 < p.box.y2 && box.y2 > p.box.y1) ||
+          (p.text === c.text && Math.hypot(p.anchor.x - c.anchor.x, p.anchor.y - c.anchor.y) < LABEL_SAME_NAME_PX));
+        if (clash) return;
+        placed.push({ box, text: c.text, anchor: c.anchor, id: c.id });
+
+        const icon = L.divIcon({
+          className: 'road-name',
+          html: `<span style="transform: translate(-50%, -50%) rotate(${c.anchor.angle.toFixed(1)}deg)">${escapeHtml(c.text)}</span>`,
+          iconSize: [0, 0]
+        });
+        L.marker(map.containerPointToLatLng([c.anchor.x, c.anchor.y]), {
+          icon, interactive: false, keyboard: false, pane: 'roadLabels'
+        }).addTo(labelLayer);
+      });
+      labelLayer.placed = placed.filter(p => !p.ui);
+    }
+
+    function scheduleRoadLabels() {
+      clearTimeout(labelTimer);
+      labelTimer = setTimeout(renderRoadLabels, 80);
+    }
+    map.on('zoomend moveend resize', scheduleRoadLabels);
+    map.on('zoomstart', () => labelLayer.clearLayers());
+
     window.toggleLabels = function() {
       showLabels = !showLabels;
       const btn = document.getElementById('labelBtn');
       btn.innerHTML = showLabels ? '🏷️ Labels: ON' : '🏷️ Labels: OFF';
       btn.classList.toggle('active-filter', showLabels);
-
-      Object.keys(roadLayers).forEach(id => {
-        const layer = roadLayers[id];
-        const name = roadNames[id];
-        if (showLabels && isTownStreet(id)) return;
-        if (showLabels) {
-          if (!layer.getTooltip()) {
-            layer.bindTooltip(escapeHtml(name), {
-              permanent: true,
-              direction: 'center',
-              className: 'road-label'
-            });
-          }
-          layer.openTooltip();
-        } else {
-          if (layer.getTooltip()) {
-            layer.unbindTooltip();
-          }
-        }
-      });
+      if (showLabels) {
+        labelLayer.addTo(map);
+        renderRoadLabels();
+      } else {
+        labelLayer.clearLayers();
+        map.removeLayer(labelLayer);
+      }
     };
 
     function applySettingsRow(row) {
