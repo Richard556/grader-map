@@ -345,6 +345,10 @@
       box-shadow: 0 4px 12px rgba(0,0,0,0.4);
     }
 
+    .admin-menu-btn.reports-btn {
+      bottom: 68px;
+    }
+
     /* Modal Overlays */
     .modal-overlay {
       display: none;
@@ -383,7 +387,7 @@
       margin-top: 10px;
       margin-bottom: 4px;
     }
-    .modal-card select, .modal-card input[type="text"], .modal-card input[type="number"], .modal-card input[type="password"] {
+    .modal-card select, .modal-card input[type="text"], .modal-card input[type="number"], .modal-card input[type="password"], .modal-card input[type="date"] {
       width: 100%;
       padding: 12px 10px;
       border-radius: 6px;
@@ -456,7 +460,48 @@
     <button id="hazardReportBtn" class="fab-btn fab-hazard" onclick="startHazardReport()" title="Report Culvert/Washout Hazard">⚠️</button>
   </div>
 
+  <button class="admin-menu-btn reports-btn" onclick="openReportsModal()">📄 Reports</button>
   <button class="admin-menu-btn" onclick="openSettingsModal()">⚙️ Cycle & Reset Settings</button>
+
+  <!-- Reports Modal -->
+  <div id="reportsModal" class="modal-overlay" onclick="if (event.target === this) closeReportsModal()">
+    <div class="modal-card">
+      <h2>📄 Reports</h2>
+
+      <label>Report</label>
+      <select id="reportType" onchange="updateReportForm()">
+        <option value="history">Road change history</option>
+        <option value="summary">Summary by operator</option>
+        <option value="sessions">Grader check-in sessions</option>
+        <option value="current">Current status of all roads</option>
+      </select>
+      <p id="reportHelp" style="margin-top:6px;"></p>
+
+      <div id="reportRangeGroup">
+        <label>Date range</label>
+        <select id="reportRange" onchange="updateReportForm()">
+          <option value="this_month">This month</option>
+          <option value="last_month">Last month</option>
+          <option value="last_30">Last 30 days</option>
+          <option value="this_year">This year</option>
+          <option value="custom">Custom dates…</option>
+        </select>
+        <div id="reportCustomGroup" style="display:none;">
+          <label>From</label>
+          <input type="date" id="reportFrom" />
+          <label>To</label>
+          <input type="date" id="reportTo" />
+        </div>
+      </div>
+
+      <p id="reportStatus" style="margin-top:12px; color:#fbbf24;"></p>
+
+      <div class="modal-actions">
+        <button class="btn-secondary" onclick="closeReportsModal()">Close</button>
+        <button class="btn-save" id="reportDownloadBtn" onclick="runReport()">Download CSV</button>
+      </div>
+    </div>
+  </div>
 
   <!-- Grader Check-In Modal -->
   <div id="graderModal" class="modal-overlay" onclick="if (event.target === this) closeGraderModal()">
@@ -1599,6 +1644,308 @@
     // Keep the elapsed time ticking
     setInterval(() => updateGraderUI(), 60000);
     fetchGraderSession();
+
+    // =====================================================================
+    // REPORTS / CSV EXPORT
+    // CSVs open directly in Excel (UTF-8 with BOM, CRLF line endings).
+    // =====================================================================
+    const STATUS_LABELS = {
+      graded: 'Graded',
+      gravel: 'Needs Work / Gravel',
+      needs_work: 'Needs Work / Gravel',
+      not_graded: 'Needs Graded',
+      untouched: 'Reset to Untouched'
+    };
+    const MAINT_LABELS = { township: 'Township', subdivision: 'Subdivision (pending)', town: 'Town (not township)' };
+    const END_REASON_LABELS = {
+      checked_out: 'Checked out',
+      ended_by_other: 'Ended by someone else',
+      taken_over: 'Taken over'
+    };
+
+    function csvCell(value) {
+      if (value === null || value === undefined) return '';
+      let s = typeof value === 'number' ? String(value) : String(value);
+      // Stop Excel from treating typed notes like "=..." as formulas
+      if (typeof value !== 'number' && /^[=+\-@\t\r]/.test(s)) s = "'" + s;
+      return /[",\r\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+    }
+
+    function toCsv(header, rows) {
+      return '﻿' + [header].concat(rows).map(r => r.map(csvCell).join(',')).join('\r\n') + '\r\n';
+    }
+
+    function downloadCsv(filename, csv) {
+      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 10000);
+    }
+
+    function pad2(n) { return String(n).padStart(2, '0'); }
+    function ymd(d) { return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`; }
+    function localDateTime(iso) {
+      if (!iso) return '';
+      const d = new Date(iso);
+      return `${ymd(d)} ${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
+    }
+    function parseYmd(s) {
+      const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(s || '');
+      return m ? new Date(+m[1], +m[2] - 1, +m[3]) : null;
+    }
+    function round2(n) { return Math.round(n * 100) / 100; }
+
+    // Returns { from: Date (local midnight), to: Date (exclusive), label }
+    function getReportRange() {
+      const preset = document.getElementById('reportRange').value;
+      const now = new Date();
+      const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+      const tomorrow = new Date(today); tomorrow.setDate(today.getDate() + 1);
+      if (preset === 'this_month') {
+        return { from: new Date(today.getFullYear(), today.getMonth(), 1), to: tomorrow };
+      }
+      if (preset === 'last_month') {
+        return {
+          from: new Date(today.getFullYear(), today.getMonth() - 1, 1),
+          to: new Date(today.getFullYear(), today.getMonth(), 1)
+        };
+      }
+      if (preset === 'last_30') {
+        const from = new Date(today); from.setDate(today.getDate() - 29);
+        return { from, to: tomorrow };
+      }
+      if (preset === 'this_year') {
+        return { from: new Date(today.getFullYear(), 0, 1), to: tomorrow };
+      }
+      const from = parseYmd(document.getElementById('reportFrom').value);
+      const toDay = parseYmd(document.getElementById('reportTo').value);
+      if (!from || !toDay) return null;
+      const to = new Date(toDay); to.setDate(toDay.getDate() + 1);
+      return from < to ? { from, to } : null;
+    }
+
+    function rangeFileTag(range) {
+      const last = new Date(range.to); last.setDate(last.getDate() - 1);
+      return `${ymd(range.from)}_to_${ymd(last)}`;
+    }
+
+    // Supabase returns at most 1000 rows per request, so page through
+    async function fetchAllRows(buildQuery) {
+      const pageSize = 1000;
+      let all = [];
+      for (let start = 0; ; start += pageSize) {
+        const { data, error } = await buildQuery().range(start, start + pageSize - 1);
+        if (error) throw error;
+        all = all.concat(data || []);
+        if (!data || data.length < pageSize) break;
+      }
+      return all;
+    }
+
+    async function fetchHistory(range) {
+      return fetchAllRows(() => dbClient.from('road_status_log').select('*')
+        .gte('changed_at', range.from.toISOString())
+        .lt('changed_at', range.to.toISOString())
+        .order('changed_at', { ascending: true }));
+    }
+
+    async function fetchSessions(range) {
+      const rows = await fetchAllRows(() => dbClient.from('grader_sessions').select('*')
+        .lt('started_at', range.to.toISOString())
+        .order('started_at', { ascending: true }));
+      // Keep sessions that overlap the range (still open, or ended after it started)
+      return rows.filter(r => !r.ended_at || new Date(r.ended_at) >= range.from);
+    }
+
+    function sessionHours(s) {
+      const end = s.ended_at ? new Date(s.ended_at) : new Date();
+      return Math.max(0, (end - new Date(s.started_at)) / 3600000);
+    }
+
+    function buildHistoryCsv(rows) {
+      const header = ['Date', 'Time', 'Road', 'Segment ID', 'Miles', 'Road Type', 'Status', 'Changed By', 'Notes', 'Source', 'Reached Server'];
+      const body = rows.map(r => {
+        const dt = localDateTime(r.changed_at);
+        return [
+          dt.slice(0, 10), dt.slice(11),
+          r.road_name || roadNames[r.segment_id] || '',
+          r.segment_id,
+          roadMiles[r.segment_id] !== undefined ? round2(roadMiles[r.segment_id]) : '',
+          MAINT_LABELS[roadMaint[r.segment_id]] || '',
+          STATUS_LABELS[r.status] || r.status,
+          r.changed_by || '',
+          r.notes || '',
+          r.source === 'reset' ? 'Admin reset' : r.source === 'auto' ? 'GPS auto' : 'Manual',
+          localDateTime(r.synced_at)
+        ];
+      });
+      return toCsv(header, body);
+    }
+
+    function buildCurrentCsv() {
+      const header = ['Road', 'Segment ID', 'Miles', 'Road Type', 'Current Status', 'Last Changed', 'Days Since', 'Changed By', 'Notes'];
+      const catLabel = (cur, cat) => {
+        if (cat === 'graded') return `Graded (≤ ${greenThresholdDays} days)`;
+        if (cat === 'warning') return `Graded, aging (${greenThresholdDays + 1}–${yellowThresholdDays} days)`;
+        if (cat === 'gravel') return 'Needs Work / Gravel';
+        if (cat === 'untouched') return 'Untouched';
+        return cur && cur.status === 'not_graded' ? 'Needs Graded' : `Overdue (> ${yellowThresholdDays} days)`;
+      };
+      const ids = Object.keys(roadMiles).filter(id => !isTownStreet(id));
+      ids.sort((a, b) => (roadNames[a] || '').localeCompare(roadNames[b] || '', undefined, { numeric: true }) || (+a - +b));
+      const body = ids.map(id => {
+        const cur = roadStatuses[id];
+        const cat = (cur ? calculateRoadVisual(cur.status, cur.updated_at) : calculateRoadVisual(null, null)).category;
+        const days = cur && cur.updated_at ? Math.floor((Date.now() - new Date(cur.updated_at)) / 86400000) : '';
+        return [
+          roadNames[id] || '', id, round2(roadMiles[id]),
+          MAINT_LABELS[roadMaint[id]] || '',
+          catLabel(cur, cat),
+          cur ? localDateTime(cur.updated_at) : '',
+          days,
+          (cur && cur.updated_by) || '',
+          (cur && cur.notes) || ''
+        ];
+      });
+      return toCsv(header, body);
+    }
+
+    function buildSessionsCsv(rows) {
+      const header = ['Operator', 'Checked In', 'Checked Out', 'Hours', 'How It Ended', 'Ended By'];
+      const body = rows.map(s => [
+        s.operator,
+        localDateTime(s.started_at),
+        s.ended_at ? localDateTime(s.ended_at) : 'Still checked in',
+        round2(sessionHours(s)),
+        s.ended_at ? (END_REASON_LABELS[s.end_reason] || s.end_reason || '') : '',
+        s.ended_by || ''
+      ]);
+      return toCsv(header, body);
+    }
+
+    function buildSummaryCsv(history, sessions) {
+      const by = {};
+      const get = name => {
+        const key = (name || 'Unknown').trim();
+        const k = key.toLowerCase();
+        return by[k] || (by[k] = { name: key, miles: 0, segments: 0, gravel: 0, needsGraded: 0, sessions: 0, hours: 0 });
+      };
+      history.forEach(r => {
+        if (r.source === 'reset') return;
+        const o = get(r.changed_by);
+        if (r.status === 'graded') {
+          o.segments += 1;
+          o.miles += isCounted(r.segment_id) ? (roadMiles[r.segment_id] || 0) : 0;
+        } else if (r.status === 'gravel' || r.status === 'needs_work') {
+          o.gravel += 1;
+        } else if (r.status === 'not_graded') {
+          o.needsGraded += 1;
+        }
+      });
+      sessions.forEach(s => {
+        const o = get(s.operator);
+        o.sessions += 1;
+        o.hours += sessionHours(s);
+      });
+      const list = Object.values(by).sort((a, b) => b.miles - a.miles || a.name.localeCompare(b.name));
+      const total = list.reduce((t, o) => {
+        ['miles', 'segments', 'gravel', 'needsGraded', 'sessions', 'hours'].forEach(k => { t[k] += o[k]; });
+        return t;
+      }, { name: 'TOTAL', miles: 0, segments: 0, gravel: 0, needsGraded: 0, sessions: 0, hours: 0 });
+      const header = ['Operator', 'Miles Graded', 'Segments Graded', 'Flagged Needs Work / Gravel', 'Flagged Needs Graded', 'Grader Sessions', 'Grader Hours'];
+      const row = o => [o.name, round2(o.miles), o.segments, o.gravel, o.needsGraded, o.sessions, round2(o.hours)];
+      return toCsv(header, list.map(row).concat([row(total)]));
+    }
+
+    function updateReportForm() {
+      const type = document.getElementById('reportType').value;
+      const needsRange = type !== 'current';
+      document.getElementById('reportRangeGroup').style.display = needsRange ? 'block' : 'none';
+      document.getElementById('reportCustomGroup').style.display =
+        needsRange && document.getElementById('reportRange').value === 'custom' ? 'block' : 'none';
+      const help = {
+        history: 'Every road status change in the date range: who, when, and notes.',
+        current: 'Where every township road stands right now. Works without signal.',
+        sessions: 'Who checked into the grader, when, and for how long.',
+        summary: 'Totals per operator: miles graded, flags, and grader hours.'
+      };
+      document.getElementById('reportHelp').textContent = help[type] || '';
+      document.getElementById('reportStatus').textContent = '';
+    }
+    window.updateReportForm = updateReportForm;
+
+    window.openReportsModal = function() {
+      const to = document.getElementById('reportTo');
+      const from = document.getElementById('reportFrom');
+      if (!to.value) {
+        const now = new Date();
+        to.value = ymd(now);
+        from.value = ymd(new Date(now.getFullYear(), now.getMonth(), 1));
+      }
+      updateReportForm();
+      document.getElementById('reportsModal').style.display = 'flex';
+    };
+    window.closeReportsModal = function() {
+      document.getElementById('reportsModal').style.display = 'none';
+    };
+
+    window.runReport = async function() {
+      const type = document.getElementById('reportType').value;
+      const statusEl = document.getElementById('reportStatus');
+      const btn = document.getElementById('reportDownloadBtn');
+
+      if (type === 'current') {
+        downloadCsv(`sverdrup_current_status_${ymd(new Date())}.csv`, buildCurrentCsv());
+        statusEl.textContent = 'Downloaded.';
+        return;
+      }
+
+      const range = getReportRange();
+      if (!range) {
+        statusEl.textContent = 'Pick a valid From and To date.';
+        return;
+      }
+      if (!dbClient || navigator.onLine === false) {
+        statusEl.textContent = 'This report needs a data connection.';
+        return;
+      }
+
+      btn.disabled = true;
+      btn.innerText = 'Building…';
+      statusEl.textContent = '';
+      try {
+        const tag = rangeFileTag(range);
+        let csv, rows;
+        if (type === 'history') {
+          rows = await fetchHistory(range);
+          csv = buildHistoryCsv(rows);
+          downloadCsv(`sverdrup_road_history_${tag}.csv`, csv);
+        } else if (type === 'sessions') {
+          rows = await fetchSessions(range);
+          csv = buildSessionsCsv(rows);
+          downloadCsv(`sverdrup_grader_sessions_${tag}.csv`, csv);
+        } else {
+          const [history, sessions] = await Promise.all([fetchHistory(range), fetchSessions(range)]);
+          rows = history;
+          csv = buildSummaryCsv(history, sessions);
+          downloadCsv(`sverdrup_operator_summary_${tag}.csv`, csv);
+        }
+        statusEl.textContent = rows.length
+          ? `Downloaded (${rows.length} record${rows.length === 1 ? '' : 's'}).`
+          : 'Downloaded — no records in that date range.';
+      } catch (err) {
+        console.error('Report failed:', err);
+        statusEl.textContent = 'Could not build the report: ' + ((err && err.message) || 'unknown error');
+      } finally {
+        btn.disabled = false;
+        btn.innerText = 'Download CSV';
+      }
+    };
 
     // --- INSTANT REALTIME WEBSOCKET SYNC ---
     if (dbClient) {
