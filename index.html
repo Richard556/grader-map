@@ -758,6 +758,34 @@
       white-space: nowrap;
     }
 
+    .driver-chips {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+      max-height: 46vh;
+      overflow-y: auto;
+      margin-bottom: 6px;
+    }
+    .driver-chip {
+      padding: 14px 10px;
+      border-radius: 10px;
+      border: 1px solid #475569;
+      background: #0f172a;
+      color: #f8fafc;
+      font-size: 15px;
+      font-weight: 700;
+      text-align: center;
+      cursor: pointer;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .driver-chip.current {
+      border-color: #38bdf8;
+      background: #0c4a6e;
+    }
+    .driver-chip:active { filter: brightness(1.2); }
+
     /* Modal Overlays */
     .modal-overlay {
       display: none;
@@ -1027,9 +1055,17 @@
             </div>
 
             <div class="admin-card">
-              <h3>Driver names on this device</h3>
-              <p class="admin-help">The quick-pick list in the driver sign-in. Removing a name here doesn't touch any history.</p>
-              <div id="admDriverList" class="admin-list"></div>
+              <h3>Drivers</h3>
+              <p class="admin-help">The shared list every device sees at sign-in. New names join automatically the first time someone signs in. Removing a name only takes it off the list — their history stays.</p>
+              <div class="admin-row2" style="grid-template-columns: 1fr auto; align-items: end;">
+                <div>
+                  <label class="admin-label" for="admNewDriver">Add a driver</label>
+                  <input type="text" id="admNewDriver" maxlength="60" placeholder="Name or initials"
+                         onkeydown="if (event.key === 'Enter') adminAddDriver()" />
+                </div>
+                <button class="admin-btn primary" onclick="adminAddDriver()">Add</button>
+              </div>
+              <div id="admDriverList" class="admin-list" style="margin-top:10px;"></div>
             </div>
           </section>
 
@@ -1156,16 +1192,16 @@
   <!-- Operator Sign-In Modal -->
   <div id="operatorModal" class="modal-overlay">
     <div class="modal-card">
-      <h2>Select Operator</h2>
-      <p>Identify who is blading so updates are logged under your name.</p>
-      
+      <h2>Who's driving?</h2>
+      <p>Changes you make are logged under this name.</p>
+
       <div id="existingOperatorContainer" style="display:none;">
-        <label>Previous Drivers on this Machine</label>
-        <select id="operatorSelect" onchange="handleOperatorDropdown(this.value)"></select>
+        <div id="operatorChips" class="driver-chips"></div>
       </div>
 
-      <label>Or Enter Your Name / Initials</label>
-      <input type="text" id="operatorInput" placeholder="e.g. Richard L." />
+      <label id="operatorInputLabel">New driver — enter name</label>
+      <input type="text" id="operatorInput" placeholder="e.g. Richard L." maxlength="60"
+             onkeydown="if (event.key === 'Enter') saveOperatorChoice()" />
 
       <div class="modal-actions">
         <button class="btn-save" onclick="saveOperatorChoice()">Confirm & Start</button>
@@ -1393,6 +1429,15 @@
         return;
       }
 
+      if (op.type === 'register_operator') {
+        const { data, error } = await dbClient.rpc('register_operator', { p_name: op.name });
+        if (error) throw error;
+        // Server may already know this driver under a slightly different spelling
+        if (data && !sharedOperators.some(n => n === data)) sharedOperators.push(data);
+        if (data && sameName(data, currentOperator) && data !== currentOperator) setCurrentOperator(data);
+        return;
+      }
+
       console.warn('Unknown queued operation, dropping:', op);
     }
 
@@ -1509,49 +1554,83 @@
       }
     }
 
-    function openOperatorModal() {
-      const modal = document.getElementById('operatorModal');
-      const select = document.getElementById('operatorSelect');
-      const container = document.getElementById('existingOperatorContainer');
-      const input = document.getElementById('operatorInput');
+    // Shared driver list (operators table), plus names this device has used
+    let sharedOperators = [];
 
-      const savedDrivers = readJson('sverdrup_known_operators', []);
-      if (savedDrivers.length > 0) {
-        container.style.display = 'block';
-        select.innerHTML = '<option value="">-- Choose Existing Driver --</option>' +
-          savedDrivers.map(d => `<option value="${escapeHtml(d)}">${escapeHtml(d)}</option>`).join('');
-      } else {
-        container.style.display = 'none';
-      }
-
-      input.value = currentOperator;
-      modal.style.display = 'flex';
+    async function fetchOperators() {
+      if (!dbClient) return;
+      const { data, error } = await dbClient.from('operators').select('name');
+      if (error) { console.warn('Could not load driver list:', error.message); return; }
+      sharedOperators = (data || []).map(r => r.name);
+      writeJson('sverdrup_shared_operators', sharedOperators);  // for offline sign-in
+      if (document.getElementById('operatorModal').style.display === 'flex') renderOperatorChips();
+      if (document.getElementById('adminPanel').style.display === 'flex' && adminPin) renderAdminDrivers();
     }
 
-    function handleOperatorDropdown(val) {
-      if (val) {
-        document.getElementById('operatorInput').value = val;
-      }
+    function allDriverNames() {
+      const shared = sharedOperators.length ? sharedOperators : readJson('sverdrup_shared_operators', []);
+      const local = readJson('sverdrup_known_operators', []);
+      const seen = new Set();
+      return shared.concat(local).filter(n => {
+        const k = String(n).trim().toLowerCase();
+        if (!k || seen.has(k)) return false;
+        seen.add(k);
+        return true;
+      }).sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
+    }
+
+    function renderOperatorChips() {
+      const names = allDriverNames();
+      const container = document.getElementById('existingOperatorContainer');
+      const chips = document.getElementById('operatorChips');
+      document.getElementById('operatorInputLabel').textContent = names.length ? 'New driver — enter name' : 'Your name or initials';
+      if (!names.length) { container.style.display = 'none'; return; }
+      container.style.display = 'block';
+      chips.innerHTML = names.map(n =>
+        `<button type="button" class="driver-chip${sameName(n, currentOperator) ? ' current' : ''}" onclick="pickOperator(${jsArg(n)})">${escapeHtml(n)}</button>`
+      ).join('');
+    }
+
+    function openOperatorModal() {
+      renderOperatorChips();
+      document.getElementById('operatorInput').value = '';
+      document.getElementById('operatorModal').style.display = 'flex';
+      fetchOperators();
+    }
+
+    window.pickOperator = function(name) {
+      document.getElementById('operatorInput').value = name;
+      saveOperatorChoice();
+    };
+
+    function setCurrentOperator(name) {
+      currentOperator = name;
+      try { localStorage.setItem('sverdrup_operator', name); } catch (e) {}
+      const savedDrivers = readJson('sverdrup_known_operators', []).filter(n => !sameName(n, name));
+      savedDrivers.push(name);
+      writeJson('sverdrup_known_operators', savedDrivers);
+      updateOperatorUI();
+      updateGraderUI();
     }
 
     function saveOperatorChoice() {
-      const name = document.getElementById('operatorInput').value.trim();
+      let name = document.getElementById('operatorInput').value.trim().replace(/\s+/g, ' ');
       if (!name) {
-        alert('Please enter your name or initials.');
+        alert('Please tap your name, or enter your name or initials.');
         return;
       }
-      currentOperator = name;
-      try { localStorage.setItem('sverdrup_operator', name); } catch (e) {}
+      if (name.length > 60) name = name.slice(0, 60);
+      // Use the spelling already on the shared list
+      const existing = allDriverNames().find(n => sameName(n, name));
+      if (existing) name = existing;
 
-      const savedDrivers = readJson('sverdrup_known_operators', []);
-      if (!savedDrivers.includes(name)) {
-        savedDrivers.push(name);
-        writeJson('sverdrup_known_operators', savedDrivers);
-      }
-
-      updateOperatorUI();
-      updateGraderUI();
+      setCurrentOperator(name);
       document.getElementById('operatorModal').style.display = 'none';
+
+      // Add to the shared list (queued, so it works without signal)
+      if (!sharedOperators.some(n => sameName(n, name))) {
+        enqueue({ type: 'register_operator', name: name });
+      }
     }
 
     if (!currentOperator) {
@@ -3295,22 +3374,37 @@
 
     function renderAdminDrivers() {
       const list = document.getElementById('admDriverList');
-      const names = readJson('sverdrup_known_operators', []);
+      const names = sharedOperators.slice().sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
       list.innerHTML = names.length
-        ? names.map((n, i) => `
+        ? names.map(n => `
             <div class="admin-item">
-              <div class="main">${escapeHtml(n)}${sameName(n, currentOperator) ? ' <span class="sub">(signed in)</span>' : ''}</div>
-              <button class="remove" onclick="adminForgetDriver(${i})">Remove</button>
+              <div class="main">${escapeHtml(n)}${sameName(n, currentOperator) ? ' <span class="sub">(signed in here)</span>' : ''}</div>
+              <button class="remove" onclick="adminRemoveDriver(${jsArg(n)})">Remove</button>
             </div>`).join('')
-        : '<div class="admin-list-empty">No saved names on this device.</div>';
+        : '<div class="admin-list-empty">No drivers yet. Names are added the first time someone signs in.</div>';
     }
 
-    window.adminForgetDriver = function(index) {
-      const names = readJson('sverdrup_known_operators', []);
-      const removed = names.splice(index, 1)[0];
-      writeJson('sverdrup_known_operators', names);
+    window.adminAddDriver = async function() {
+      const input = document.getElementById('admNewDriver');
+      const name = input.value.trim().replace(/\s+/g, ' ');
+      if (!name) return;
+      const res = await adminCall('admin_add_operator', { p_name: name });
+      if (!res) return;
+      input.value = '';
+      await fetchOperators();
       renderAdminDrivers();
-      if (removed) adminToast(`Removed "${removed}" from this device's list.`);
+      adminToast(`Added "${name}" to the driver list.`);
+    };
+
+    window.adminRemoveDriver = async function(name) {
+      if (!confirm(`Remove "${name}" from the driver list on every device?\n\nTheir history and reports are kept.`)) return;
+      const res = await adminCall('admin_remove_operator', { p_name: name });
+      if (!res) return;
+      // Also forget it on this device so it doesn't come back from the local list
+      writeJson('sverdrup_known_operators', readJson('sverdrup_known_operators', []).filter(n => !sameName(n, name)));
+      await fetchOperators();
+      renderAdminDrivers();
+      adminToast(`Removed "${name}" from the driver list.`);
     };
 
     // --- Auto-blade ---
@@ -3382,6 +3476,11 @@
         )
         .on(
           'postgres_changes',
+          { event: '*', schema: 'public', table: 'operators' },
+          () => fetchOperators()
+        )
+        .on(
+          'postgres_changes',
           { event: '*', schema: 'public', table: 'grader_sessions' },
           () => fetchGraderSession()
         )
@@ -3399,6 +3498,7 @@
       await fetchHazards();
       overlayPendingChanges();
       await fetchGraderSession();
+      await fetchOperators();
     }
 
     // --- LOAD ROADS ---
